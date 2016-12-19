@@ -1,0 +1,2 @@
+# MiracleNikkiJp_chart
+ミラクルニキのコーデ試算表です
