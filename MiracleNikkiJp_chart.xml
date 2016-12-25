@@ -12,21 +12,6 @@
   <AllowPNG/>
  </OfficeDocumentSettings>
  <ExcelWorkbook xmlns="urn:schemas-microsoft-com:office:excel">
-  <SupBook>
-   <Path>MiracleNikkiJp_items.csv</Path>
-   <SheetName>MiracleNikkiJp_items</SheetName>
-   <Xct>
-    <Count>1</Count>
-    <SheetIndex>0</SheetIndex>
-    <Crn>
-     <Row>0</Row>
-     <ColFirst>0</ColFirst>
-     <ColLast>1</ColLast>
-     <Text>名前</Text>
-     <Text>種類</Text>
-    </Crn>
-   </Xct>
-  </SupBook>
   <WindowHeight>8655</WindowHeight>
   <WindowWidth>22065</WindowWidth>
   <WindowTopX>0</WindowTopX>
