@@ -13,4 +13,4 @@
 このフェアレディ(黒)を華麗属性の衣装と合わせると、
 シンプルと華麗が打ち消し合って評価が下がると私は考えています。
 
-![衣装説明](wiki/images/item_status_simple.png) ![属性詳細](wiki/images/item_status_full.png)  
+![衣装説明](https://github.com/koala31/MiracleNikkiJp_chart/wiki/images/item_status_simple.png) ![属性詳細](https://github.com/koala31/MiracleNikkiJp_chart/wiki/images/item_status_full.png)  
