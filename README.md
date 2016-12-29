@@ -1,5 +1,6 @@
 # MiracleNikkiJp_chart
 ミラクルニキのコーデ試算表です。まだ作り始めたところです。  
+予定と進捗は、[プロジェクト](https://github.com/koala31/MiracleNikkiJp_chart/projects/1)のページで確認できます。  
 これからwikiを書いていきますので、リンクを置いておきます。[MiracleNikkiJp_chartのwiki](https://github.com/koala31/MiracleNikkiJp_chart/wiki)  
 試算で用いるデータは、本体と別置きで編集容易な形式とし、可能なら皆さんのお力を借りてアップデートしていけたらと考えています。[MiracleNikkiJp_items](https://github.com/koala31/MiracleNikkiJp_items)  
 
