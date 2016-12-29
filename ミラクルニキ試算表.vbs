@@ -14,7 +14,9 @@ On Error Resume Next
 ' Determine the path name of the file to be accessed
 set filesys = CreateObject("Scripting.FileSystemObject")
 cwd_name = filesys.getParentFolderName(WScript.ScriptFullName)
+items_dir_name = filesys.getParentFolderName(filesys.getParentFolderName(WScript.ScriptFullName)) & "\" & "MiracleNikkiJp_items"
 items_filename = cwd_name & "\" & "MiracleNikkiJp_items.csv"
+items_dir_filename = items_dir_name & "\" & "MiracleNikkiJp_items.csv"
 balance_filename = cwd_name & "\" & "MiracleNikkiJp_balance.csv"
 chart_filename = cwd_name & "\" & "MiracleNikkiJp_chart.xml"
 chart_filename_xlsx = cwd_name & "\" & "MiracleNikkiJp_chart.xlsx"
@@ -24,10 +26,14 @@ set excel_app = WScript.CreateObject("Excel.Application")
 excel_app.Visible = True
 
 ' open item sheet
-if filesys.FileExists(items_filename) then
-    set items_book = excel_app.Workbooks.Open(items_filename)
+if filesys.FileExists(items_dir_filename) then
+    set items_book = excel_app.Workbooks.Open(items_dir_filename)
 else
+  if filesys.FileExists(items_filename) then
+    set items_book = excel_app.Workbooks.Open(items_filename)
+  else
     WScript.echo("not found " & items_filename)
+  end if
 end if
 ' oepn balance sheet
 if filesys.FileExists(balance_filename) then
