@@ -4,6 +4,7 @@ Dim cwd_name
 Dim src_stream
 Dim dst_stream
 Dim ch
+Dim src_str
 
 ' Determine the path name of the file to be accessed
 src_filename = "MiracleNikkiJp_balance.csv"
@@ -35,8 +36,12 @@ set dst_stream = CreateObject("ADODB.Stream")
 dst_stream.Type = 2  ' text
 dst_stream.Charset = "utf-8"
 dst_stream.Open
-' stream to stream copy
-src_stream.CopyTo dst_stream
+' read whole
+src_str = src_stream.ReadText(-1)
+' replace tab to ,
+src_str = Replace(src_str, "	", ",")
+' write to stream
+dst_stream.WriteText src_str, 0
 ' Close source stream
 src_stream.Close
 ' Overwrite with utf8 code with BOM
