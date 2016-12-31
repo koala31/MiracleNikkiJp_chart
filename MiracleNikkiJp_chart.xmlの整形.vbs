@@ -31,6 +31,8 @@ set dst_stream = CreateObject("ADODB.Stream")
 dst_stream.Type = 2  ' text
 dst_stream.Charset = "utf-8"
 dst_stream.Open
+' message
+WScript.echo("MiracleNikkiJp_chart.xmlの整形を開始します。しばらくかかる場合があります。終了したらお知らせします。")
 '-----------------------------
 prev_line_str = ""
 row_line_str = ""
@@ -145,3 +147,5 @@ src_stream.Close
 dst_stream.SaveToFile src_filename, 2
 ' Close destination stream
 dst_stream.Close
+' message
+WScript.echo("MiracleNikkiJp_chart.xmlの整形が終了しました")
