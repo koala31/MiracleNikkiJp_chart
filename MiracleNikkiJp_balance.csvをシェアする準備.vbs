@@ -25,8 +25,12 @@ ch = src_stream.Read(1)
 if Ascb(ch) = &hEF then
     ' already utf-8
     src_stream.Close
+    ' message
+    WScript.echo("MiracleNikkiJp_balance.csvのシェアの準備は既にできているようです。何もせずに終了します。")
     WScript.Quit(-1)
 end if
+' message
+WScript.echo("MiracleNikkiJp_balance.csvの文字列をutf-8に、タブをカンマに変換します。")
 ' rewind and text mode
 src_stream.Position = 0
 src_stream.Type = 2  ' text
@@ -48,3 +52,5 @@ src_stream.Close
 dst_stream.SaveToFile src_filename, 2
 ' Close destination stream
 dst_stream.Close
+' message
+WScript.echo("MiracleNikkiJp_balance.csvのシェアの準備が終了しました。")
