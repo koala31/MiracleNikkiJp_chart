@@ -117,6 +117,14 @@ Do Until src_stream.EOS
       line_str = Replace(line_str, "MiracleNikkiJp_items.csv!", "'[MiracleNikkiJp_items.csv]MiracleNikkiJp_items'!")
       ' link update for balance
       line_str = Replace(line_str, "MiracleNikkiJp_balance.csv!", "'[MiracleNikkiJp_balance.csv]MiracleNikkiJp_balance'!")
+      ' path remove
+      Do
+        del_str_end = InStr(line_str, "\[")
+        if del_str_end > 0 then
+          del_str_bgn = InStrRev(Left(line_str, del_str_end), "'")
+          line_str = RTrim(Left(line_str, del_str_bgn)) & Mid(line_str, del_str_end + 1)
+        end if
+      Loop While del_str_end > 0
       ' delete ss:Author="..."
       Do
         del_str_bgn = InStr(line_str, "ss:Author")
