@@ -37,16 +37,16 @@ else
 end if
 ' oepn balance sheet
 if filesys.FileExists(balance_filename) then
-    set items_book = excel_app.Workbooks.Open(balance_filename)
+    set balance_book = excel_app.Workbooks.Open(balance_filename)
 else
     WScript.echo("not found " & balance_filename)
 end if
 ' oepn chart sheet
 if filesys.FileExists(chart_filename_xlsx) then
-    set items_book = excel_app.Workbooks.Open(chart_filename_xlsx)
+    set chart_book = excel_app.Workbooks.Open(chart_filename_xlsx)
 else
     if filesys.FileExists(chart_filename) then
-        set items_book = excel_app.Workbooks.Open(chart_filename)
+        set chart_book = excel_app.Workbooks.Open(chart_filename)
     else
         WScript.echo("not found " & chart_filename)
     end if
