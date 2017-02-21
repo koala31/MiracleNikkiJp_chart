@@ -1,0 +1,12 @@
+﻿Option Explicit
+
+Dim strVersion
+strVersion = "Beta1"
+
+Dim objArgs
+Set objArgs = WScript.Arguments
+Dim I
+For I = 0 to objArgs.Count - 1
+   WScript.Echo "objArgs(" & I & ") = " & objArgs(I)
+Next
+WScript.echo("実行しました")
