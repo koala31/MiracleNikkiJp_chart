@@ -4,6 +4,23 @@ Const cVersion = "beta1"
 Const cRetry = 3    ' リトライ数
 Const cSleep = 100
 
+' 既定の定数
+Const TristateTrue = -1
+Const TristateFalse = 0
+Const TristateUseDefault = -2
+
+' コマンド文字列の一覧
+Const cCmdEnd = "end"
+Const cCmdSetup = "setup"
+Const cCmdRun = "run"
+Const cCmdDbgPoll = "debug_poll"
+
+' 共通オブジェクト
+Dim objFileSystem
+set objFileSystem = CreateObject("Scripting.FileSystemObject")
+Dim objCurrentDirectory
+objCurrentDirectory = New CCurrentDirectory
+
 ' 引数の確認表示
 Dim objArgs
 Set objArgs = WScript.Arguments
@@ -20,20 +37,23 @@ Dim objMain
 Set objMain = New CMain
 
 'メインループ
-Do While strCommand <> "end"
-    Select Case objArgs(0)
-        Case "setup"
-            objMain.Command(strCommand)
-            strCommand = "end"  ' 続いて終了
-        Case "debug_poll"
+Do While strCommand <> cCmdEnd
+    Select Case strCommand
+        Case cCmdSetup
+            ' コマンド実行。次に実行するコマンドは戻り値で指定される
+            strCommand = objMain.CmdSetup
+        Case cCmdRun
+            ' コマンド実行。次に実行するコマンドは戻り値で指定される
+            strCommand = objMain.CmdRun
+        Case cCmdDbgPoll
             If objMain.Poll() Then   ' メイン処理のポーリングを実行
                 Err.Clear
                 WScript.Sleep cSleep ' 指定時間他のプログラムを回す
             Else
-                strCommand = "end"   ' 続いて終了
+                strCommand = cCmdEnd   ' 続いて終了
             End If
         Case Else
-            strCommand = "end"  ' 続いて終了
+            strCommand = cCmdEnd  ' 続いて終了
     End Select
 Loop
 
@@ -46,32 +66,152 @@ WScript.Quit()
 Class CMain
     Public strWorkbookName
     Public strSheetName
-    Public objExApplication
-    Public objExWorkbook
-    Public objExWorksheet
+    Public m_objExApplication
+    Public objItem    ' as CItem
+    Public objBalance ' as CBalance
+    Public objChart   ' as CChart
 
     Private Sub Class_Initialize
-        Set objExApplication = Nothing
-        Set objExWorkbook = Nothing
-        Set objExWorksheet = Nothing
-
-        strWorkbookName = "C:\home\koala31\source\MiracleNikkiJp_chart\deb_bkup_test_src.csv"
-        strSheetName = "deb_bkup_test_src"
-
-        Set objExApplication = New CExApplication
-        Set objExWorkbook = objExApplication.OpenBook(strWorkbookName)
-        Set objExWorksheet = objExWorkbook.GetSheet(strSheetName)
-
+        Set m_objExApplication = New CExApplication
+        Set objItem    = Nothing
+        Set objBalance = Nothing
+        Set objChart   = Nothing
     End Sub
     Private Sub Class_Terminate
-        objExApplication.Quit
+        Set objChart   = Nothing
+        Set objBalance = Nothing
+        Set objItem    = Nothing
+        Set m_objExApplication = Nothing
     End Sub
+
+    Public Property Get objExApplication
+        Set objExApplication = m_objExApplication
+    End Property
+
+    ' setupコマンド実行。次のコマンドを戻り値で指定する
+    Public Function CmdSetup
+        ' 次に実行するコマンドを戻り値で指定
+        CmdSetup = cCmdEnd
+
+        ' MiracleNikkiJp_chart.xlsx のバックアップファイルを作成
+        FileBackup "MiracleNikkiJp_chart.xlsx" '失敗しても気にしない
+        ' バランスオブジェクトの生成
+        Set objBalance = New CBalance
+        Set objBalance.objMain = Me
+        ' バランス.csvを開く
+        If objBalance.OpenCsv = False Then
+            ' バランス.csvが開けないならエラーリターン
+            Exit Function
+        End If
+        ' アイテム表オブジェクトの生成
+        Set objItem = New CItem
+        Set objItem.objMain = Me
+        ' アイテム表.xlsxを開く
+        If objItem.OpenXlsx = True Then
+            ' アイテム表.xlsxを開けたら多分試算表.xlsxもあるから開いて所有情報をバックアップ
+            ' 試算表オブジェクトの生成
+            Set objChart = New CChart
+            Set objChart.objMain = Me
+            ' 試算表.xlsxを開く
+            objChart.OpenXlsx
+            ' アイテム所有情報バックアップ
+            ' ToDo ###########################
+
+            ' 試算表を閉じる
+            Set objChart = Nothing
+            ' アイテム表.xlsxを閉じる
+            Set objItem = Nothing
+            ' アイテム表オブジェクトの再生成
+            Set objItem = New CItem
+            Set objItem.objMain = Me
+        End If
+
+        ' アイテム表.csvを開く(試算表.xmlはアイテム表.csvが前提だから)
+        objItem.OpenCsv
+        ' 試算表オブジェクトの生成
+        Set objChart = New CChart
+        Set objChart.objMain = Me
+        ' 試算表.xmlを開く
+        objChart.OpenXml
+
+        ' アイテム所有情報があればリストアする
+        ' ToDo ###########################
+
+        ' アイテム表.xlsxとして保存する(試算表.xmlのリンク先もアイテム表.xlsxになる)
+        objItem.SaveXlsx
+        ' 試算表を保存する
+        objChart.SaveXlsx
+        ' 試算表を閉じる
+        objChart.Close
+        ' バランスを閉じる
+        objBalance.Close
+        ' アイテム表を閉じる
+        objItem.Close
+        ' 次に実行するコマンドを戻り値で指定
+        CmdSetup = cCmdEnd
+    End Function
+
+    ' runコマンド実行。次のコマンドを戻り値で指定する
+    Public Function CmdRun
+        ' アイテム表オブジェクトの生成
+        Set objItem = New CItem
+        Set objItem.objMain = Me
+        ' アイテム表.csvを開く
+        objItem.OpenXlsx
+        ' バランスオブジェクトの生成
+        Set objBalance = New CBalance
+        Set objBalance.objMain = Me
+        ' バランス.csvを開く
+        objBalance.OpenCsv
+        ' 試算表オブジェクトの生成
+        Set objChart = New CChart
+        Set objChart.objMain = Me
+        ' 試算表.xlsxを開く
+        objChart.OpenXlsx
+        ' 次に実行するコマンドを戻り値で指定
+        CmdRun = cCmdDbgPoll
+    End Function
+
+    '指定のファイルからバックアップファイルを作成する
+    ' 戻り値 成功でTrue, 失敗でFalse
+    Private Function FileBackup(filename)
+        Dim strSrcFilename
+        strSrcFilename = objFileSystem.GetAbsolutePathName(filename)
+        Dim strBasename
+        strBasename = objFileSystem.GetBaseName(filename)
+        Dim strExtnsionname
+        strExtnsionname = objFileSystem.GetExtensionName(filename)
+        If Len(strExtnsionname) > 0 Then
+            strExtnsionname = "." & strExtnsionname
+        End If
+        Dim strBakFilename
+        strBakFilename = objFileSystem.GetAbsolutePathName(BackupFilename(strBasename) & strExtnsionname)
+        on error resume next
+        Err.Clear
+        'バックアップ先にファイル名で存在する場合は強制削除
+        If objFileSystem.FileExists(strBakFilename) Then
+            objFileSystem.DeleteFile strBakFilename, True
+        End If
+        Err.Clear
+        objFileSystem.CopyFile strSrcFilename, strBakFilename, True
+        If Err.number = 0 Then
+            FileBackup = True
+        Else
+            FileBackup = False
+        End If
+    End Function
+
+    ' ポーリング
+    ' 戻り値 ポーリング継続可=True, ポーリング中止要求=False
+    Public Function Poll
+        Poll = True
+    End Function
 End Class
 
 ' Excel Automation Application wrapper
 Class CExApplication
-    Public m_objExWorkbooks()  ' child as CExWorkbook
-    Public m_objComApplication ' COM Automation Excel Application
+    Private m_objExWorkbooks()  ' child as CExWorkbook
+    Private m_objComApplication ' COM Automation Excel Application
     Private m_Created
 
     Private Sub Class_Initialize
@@ -86,7 +226,7 @@ Class CExApplication
     End Sub
 
     Public Default Property Get objComApplication
-        Set ComApplication = m_objComApplication
+        Set objComApplication = m_objComApplication
     End Property
 
     Public Property Get Created
@@ -94,7 +234,7 @@ Class CExApplication
     End Property
 
     Public Function Create
-        on error resume next
+        'on error resume next
         Err.Clear
         Create = True   ' 戻り値のプリセット
         If m_Created Then
@@ -111,19 +251,85 @@ Class CExApplication
             Set m_objComApplication = Nothing
             m_Created = False
             Create = False   ' 戻り値:失敗
+            WScript.echo("Microsoft Excelが利用できないようです。 (COM Automation Excel.Application)")
         End If
     End Function
 
     ' ブックとしてオープンする。
-    ' 戻り値 CExWorkbookオブジェクト, 失敗でNothing
-    Public Function OpenBook(pathname)
+    ' 戻り値 成功でTrue, 失敗でFalse
+    Public Function OpenBook(pathname, ByRef obj)
         ' まだならCreateする
-        If Not m_Created Then
-            If Not Create() Then
-                Set OpenBook = Nothing  ' 戻り値:失敗
-                Exit Function
-            End If
+        If Create() = False Then
+            OpenBook = False  ' 戻り値:失敗
+            Exit Function
         End If
+        'on error resume next
+        Err.Clear
+        'Excelファイルを開く
+        Dim objComBook
+        Set objComBook = m_objComApplication.Workbooks.Open(pathname)
+        If Err.number = 0 Then
+            Set obj.objExApplication = Me
+            Set obj.objComWorkbook = objComBook
+            obj.objComWorkbook.Saved = True   '保存済みとマークする(そのまま閉じるときに問わないように)
+            OpenBook = addChild(obj) ' 戻り値:addChildの結果
+        Else
+            OpenBook = False   ' 戻り値:失敗
+        End If
+    End Function
+
+    ' ブックを新規生成
+    ' 戻り値 成功でTrue, 失敗でFalse
+    Public Function NewBook(ByRef obj)
+        ' まだならCreateする
+        If Create() = False Then
+            NewBook = False  ' 戻り値:失敗
+            Exit Function
+        End If
+        'on error resume next
+        Err.Clear
+        'Excelファイルを開く
+        Dim objComBook
+        Set objComBook = m_objComApplication.Workbooks.Add()
+        If Err.number = 0 Then
+            NewBook = addChild(obj) ' 戻り値:addChildの結果
+            Set obj.objExApplication = Me
+            Set obj.objComWorkbook = objComBook
+        Else
+            NewBook = False   ' 戻り値:失敗
+        End If
+    End Function
+
+    Public Function Quit
+        'on error resume next
+        'child workbookを破棄
+        deleteChilds
+        If m_Created Then
+            Dim t
+            For t = 0 To cRetry
+                Err.Clear
+                m_objComApplication.Quit
+                If Err.number = 0 Then
+                    m_Created = False
+                    Set m_objComApplication = Nothing
+                    Quit = True   ' 戻り値:成功
+                    Exit Function
+                Else
+                    Quit = False   ' 戻り値:失敗
+                    ' 少し待ってみる
+                    WScript.Sleep cSleep
+                End If
+            Next
+        End If
+    End Function
+
+    ' ポーリング
+    ' 戻り値 ポーリング継続可=True, ポーリング中止要求=False
+    Private Function Poll
+        Poll = True
+    End Function
+
+    Public Function addChild(ByRef obj)
         ' m_objExWorkbooksの添字を決める
         Dim idx
         If m_objExWorkbooks(0) Is Nothing Then
@@ -135,64 +341,40 @@ Class CExApplication
         Else
             ' 一つ拡張して使う
             idx = UBound(m_objExWorkbooks) + 1
-            ReDim m_objExWorkbooks(idx)
+            ReDim Preserve m_objExWorkbooks(idx)
         End If
-        on error resume next
-        Err.Clear
-        'Excelファイルを開く
-        Dim objComBook
-        Set objComBook = m_objComApplication.Workbooks.Open(pathname)
-        If Err.number = 0 Then
-            Set m_objExWorkbooks(idx) = New CExWorkbook
-            Set m_objExWorkbooks(idx).objExApplication = Me
-            Set m_objExWorkbooks(idx).objComWorkbook = objComBook
-            Set OpenBook = m_objExWorkbooks(idx)   ' 戻り値:成功ならオブジェクト
-        Else
-            Set m_objExWorkbooks(idx) = Nothing
-            Set OpenBook = Nothing   ' 戻り値:失敗
-        End If
+        Set m_objExWorkbooks(idx) = obj
+        addChild = True   ' 戻り値:成功ならTrue
     End Function
 
-    ' ブックを新規生成
-    ' 戻り値 CExWorkbookオブジェクト, 失敗でNothing
-    Public Function NewBook
-        ' まだならCreateする
-        If Not m_Created Then
-            If Not Create() Then
-                Set NewBook = Nothing  ' 戻り値:失敗
-                Exit Function
+    Private Function deleteChilds
+        Dim t
+        For t = 0 To cRetry
+            deleteChilds = True
+            Dim i
+            For i = 0 To UBound(m_objExWorkbooks)
+                If Not IsEmpty(m_objExWorkbooks(i)) Then
+                    If Not (m_objExWorkbooks(i) Is Nothing) Then
+                        If m_objExWorkbooks(i).CloseBook Then
+                            Set m_objExWorkbooks(i) = Nothing
+                        Else
+                            deleteChilds = False
+                        End If
+                    End If
+                End If
+            Next
+            ' 全成功判定
+            If deleteChilds Then
+                Exit For
             End If
-        End If
-        ' m_objWorkbooksの添字を決める
-        Dim idx
-        If m_objWorkbooks(0) Is Nothing Then
-            ' 最初の0が未使用なら0
-            idx = 0
-        ElseIf m_objWorkbooks(UBound(m_objWorkbooks)) Is Nothing Then
-            ' 最後が未使用ならそこを使う
-            idx = UBound(m_objWorkbooks)
-        Else
-            ' 一つ拡張して使う
-            idx = UBound(m_objWorkbooks) + 1
-            ReDim m_objWorkbooks(idx)
-        End If
-        on error resume next
-        Err.Clear
-        'Excelファイルを開く
-        Dim objComBook
-        Set objComBook = m_objComApplication.Workbooks.Add()
-        If Err.number = 0 Then
-            Set m_objWorkbooks(idx) = New CExWorkbook
-            Set m_objWorkbooks(idx).objExApplication = Me
-            Set m_objWorkbooks(idx).objComWorkbook = objComBook
-            Set NewBook = m_objWorkbooks(idx)   ' 戻り値:成功ならオブジェクト
-        Else
-            Set m_objWorkbooks(idx) = Nothing
-            Set NewBook = Nothing   ' 戻り値:失敗
-        End If
+            ' 少し待ってみる
+            WScript.Sleep cSleep
+        Next
+        ReDim Preserve m_objExWorkbooks(0)
     End Function
 
-    ' bookから閉じたことが通知される
+    ' <<Signal>> bookから閉じたことが通知される
+    ' 戻り値 False:以降のSignalハンドラを処理しないよう要求する
     Public Function BookClosed(obj)
         Dim i
         For i = 0 To UBound(m_objExWorkbooks)
@@ -201,65 +383,15 @@ Class CExApplication
             End If
         Next
     End Function
-
-    Public Function Quit
-        on error resume next
-        'child workbookを破棄
-        DeleteChild
-        If m_Created Then
-            Dim t
-            For t = 0 To cRetry
-                Err.Clear
-                m_objComApplication.Quit
-                If Err.number = 0 Then
-                    Set m_objComApplication = Nothing
-                    Quit = True   ' 戻り値:成功
-                Else
-                    Quit = False   ' 戻り値:失敗
-                    ' 少し待ってみる
-                    WScript.Sleep cSleep
-                End If
-            Next
-        End If
-    End Function
-
-    Private Function DeleteChild
-        Dim t
-        For t = 0 To cRetry
-            DeleteChild = True
-            Dim i
-            For i = 0 To UBound(m_objExWorkbooks)
-                If Not (m_objExWorkbooks(i) Is Nothing) Then
-                    If m_objExWorkbooks(i).CloseBook Then
-                        Set m_objExWorkbooks(i) = Nothing
-                    Else
-                        DeleteChild = False
-                    End If
-                End If
-            Next
-            ' 全成功判定
-            If DeleteChild Then
-                Exit For
-            End If
-            ' 少し待ってみる
-            WScript.Sleep cSleep
-        Next
-        ReDim m_objExWorkbooks(0)
-    End Function
-
-    ' ポーリング
-    ' 戻り値 ポーリング継続可=True, ポーリング中止要求=False
-    Private Function Poll
-        Poll = True
-    End Function
 End Class
 
 ' Excel Automation Workbook wrapper
 Class CExWorkbook
-    Public m_objExApplication   ' parent as CExApplication
-    Public m_objExWorksheets()  ' child as CExWorksheet
-    Public m_objComWorkbook     ' COM Automation Excel Workbook
-    Public m_objComActiveWindow ' active COM Automation Excel Window
+    Private m_objExApplication   ' parent as CExApplication
+    Private m_objExWorksheets()  ' child as CExWorksheet
+    Private m_objComWorkbook     ' COM Automation Excel Workbook
+    Private m_objComActiveWindow ' active COM Automation Excel Window
+    Private m_Opend
 
     Private Sub Class_Initialize
         Set m_objExApplication = Nothing
@@ -267,6 +399,7 @@ Class CExWorkbook
         Set m_objExWorksheets(0) = Nothing
         Set m_objComWorkbook = Nothing
         Set m_objComActiveWindow = Nothing
+        m_Opend = False
     End Sub
     Private Sub Class_Terminate
         ' 閉じる
@@ -277,7 +410,7 @@ Class CExWorkbook
         Set ExApplication = m_objExApplication
     End Property
 
-    Public Property Set objExApplication(obj)
+    Public Property Set objExApplication(ByRef obj)
         Set m_objExApplication = obj
     End Property
 
@@ -285,26 +418,118 @@ Class CExWorkbook
         Set objComWorkbook = m_objComWorkbook
     End Property
 
-    Public Property Set objComWorkbook(obj)
+    Public Property Set objComWorkbook(ByRef obj)
         Set m_objComWorkbook = obj
+        If Not (obj Is Nothing) Then
+            m_Opend = True
+        End If
     End Property
 
-    Public Function CloseBook
-        on error resume next
+    Public Property Get objComActiveWindow
+        Set objComWorkbook = m_objComActiveWindow
+    End Property
+
+    Public Property Set objComActiveWindow(ByRef obj)
+        Set m_objComActiveWindow = obj
+    End Property
+
+    Public Function GetSheet(sheetname, ByRef obj)
+        'on error resume next
         Err.Clear
-        'child worksheetを破棄
-        DeleteChild
-        'Excelファイルを閉じる
-        m_objComWorkbook.Close
+        Dim objComSheet
+        Set objComSheet = m_objComWorkbook.Worksheets(sheetname)
         If Err.number = 0 Then
-            m_objExApplication.BookClosed   '親に通知
-            Create = True   ' 戻り値:成功
+            Set obj.objExWorkbook = Me
+            Set obj.objComWorksheet = objComSheet
+            GetSheet = addChild(obj) '戻り値:addChildの結果
         Else
-            Create = False   ' 戻り値:失敗
+            GetSheet = False  ' 戻り値:失敗
         End If
     End Function
 
-    Public Function GetSheet(sheetname)
+    Public Function NewSheet(ByRef obj)
+        'on error resume next
+        Err.Clear
+        Dim objComSheet
+        Set objComSheet = m_objComWorkbook.Worksheets.Add
+        If Err.number = 0 Then
+            Set obj.objExWorkbook = Me
+            Set obj.objComWorksheet = objComSheet
+            NewSheet = addChild(obj) '戻り値:成功ならオブジェクト
+        Else
+            NewSheet = Nothing  ' 戻り値:失敗
+        End If
+    End Function
+
+    Public Function SaveAs(filename)
+        'on error resume next
+        Err.Clear
+        Dim backup_filename
+        backup_filename = BackupFilename(filename)
+        '保存するファイル名で存在する場合はいったんバックアップファイル名にリネーム
+        If objFileSystem.FileExists(filename) Then
+            'バックアップ先のファイル名で存在する場合は強制削除
+            If objFileSystem.FileExists(backup_filename) Then
+                objFileSystem.DeleteFile backup_filename, True
+            End If
+            'バックアップファイル名にリネーム
+            objFileSystem.MoveFile filename, backup_filename
+        End If
+
+        Err.Clear
+        If LCase(Right(filename, 4)) = ".csv" Then
+            m_objComWorkbook.SaveAs filename, 6 ' 6=xlCSV
+        ElseIf LCase(Right(filename, 4)) = ".xml" Then
+            m_objComWorkbook.SaveAs filename, 46 ' 46=xlXMLSpreadsheet
+        Else
+            m_objComWorkbook.SaveAs filename, 51 ' -4143=xlWorkbookDefault
+        End If
+        If Err.number = 0 Then
+            SaveAs = True   ' 戻り値:成功
+            m_objComWorkbook.Saved = True   '保存済みとマークする(閉じるときに問わないように)
+            'バックアップがあれば削除
+            If objFileSystem.FileExists(backup_filename) Then
+                objFileSystem.DeleteFile backup_filename, True
+            End If
+        Else
+            SaveAs = False  ' 戻り値:失敗
+            '失敗したが半端に作成されたファイルがあるかもなので削除する
+            If objFileSystem.FileExists(filename) Then
+                objFileSystem.DeleteFile filename, True
+            End If
+            'バックアップから復元
+            objFileSystem.MoveFile backup_filename, filename
+        End If
+    End Function
+
+    Public Function CloseBook
+        If Not m_Opend Then
+            ' 既に閉じている
+            CloseBook = True
+            Exit Function
+        End If
+        'on error resume next
+        Err.Clear
+        'child worksheetを破棄
+        deleteChilds
+        'Excelファイルを閉じる
+        m_objComWorkbook.Close
+        If Err.number = 0 Then
+            m_Opend = False
+            m_objExApplication.BookClosed Me   '親に通知
+            CloseBook = True   ' 戻り値:成功
+        Else
+            CloseBook = False   ' 戻り値:失敗
+        End If
+    End Function
+
+    ' ポーリング
+    ' 戻り値 ポーリング継続可=True, ポーリング中止要求=False
+    Private Function Poll
+        Poll = True
+    End Function
+
+    Private Function addChild(ByRef obj)
         ' m_objExWorksheetsの添字を決める
         Dim idx
         If m_objExWorksheets(0) Is Nothing Then
@@ -316,74 +541,475 @@ Class CExWorkbook
         Else
             ' 一つ拡張して使う
             idx = UBound(m_objExWorksheets) + 1
-            ReDim m_objExWorksheets(idx)
+            ReDim Preserve m_objExWorksheets(idx)
         End If
-        on error resume next
-        Err.Clear
-        Dim objComSheet
-        Set objComSheet = m_objComWorkbook.Worksheets(sheetname)
-        If Err.number = 0 Then
-            Set m_objExWorksheets(idx) = New CExWorksheet
-            Set m_objExWorksheets(idx).objExWorkbook = Me
-            Set m_objExWorksheets(idx).objComWorksheet = objComSheet
-            Set GetSheet = m_objExWorksheets(idx)   '戻り値:成功ならオブジェクト
-        Else
-            Set GetSheet = Nothing  ' 戻り値:失敗
-        End If
+        Set m_objExWorksheets(idx) = obj
+        addChild = True   '戻り値:成功ならTrue
     End Function
 
-    Private Function DeleteChild
+    Private Function deleteChilds
         Dim t
         For t = 0 To cRetry
-            DeleteChild = True
+            deleteChilds = True
             Dim i
             For i = 0 To UBound(m_objExWorksheets)
-                If Not (m_objExWorksheets(i) Is Nothing) Then
-                    If m_objExWorksheets(i).Close Then
-                        Set m_objExWorksheets(i) = Nothing
-                    Else
-                        DeleteChild = False
+                If Not IsEmpty(m_objExWorksheets(i)) Then
+                    If Not (m_objExWorksheets(i) Is Nothing) Then
+                        If m_objExWorksheets(i).Close Then
+                            Set m_objExWorksheets(i) = Nothing
+                        Else
+                            deleteChilds = False
+                        End If
                     End If
                 End If
             Next
             ' 全成功判定
-            If DeleteChild Then
+            If deleteChilds Then
                 Exit For
             End If
             ' 少し待ってみる
             WScript.Sleep cSleep
         Next
-        ReDim m_objExWorksheets(0)
+        ReDim Preserve m_objExWorksheets(0)
     End Function
 End Class
 
 ' Excel Automation Worksheet wrapper
 Class CExWorksheet
-    Public objComWorksheet ' COM Automation Excel Worksheet
-    Public objExWorkbook   ' parent as CExWorkbook
+    Private m_objExWorkbook   ' parent as CExWorkbook
+    Private m_objComWorksheet ' COM Automation Excel Worksheet
 
     Private Sub Class_Initialize
-        Set objComWorksheet = Nothing
-        Set objExWorkbook = Nothing
+        Set m_objComWorksheet = Nothing
+        Set m_objExWorkbook = Nothing
     End Sub
     Private Sub Class_Terminate
     End Sub
 
-    Public Default Property Get ComWorksheet
-        Set ComWorksheet = objComWorksheet
+    Public Property Get objExWorkbook
+        Set objExWorkbook = objExWorkbook
     End Property
 
-    Public Property Get ExWorkbook
-        Set ExWorkbook = objExWorkbook
+    Public Property Set objExWorkbook(ByRef obj)
+        Set m_objExWorkbook = obj
     End Property
 
-    Public Property Set ExWorkbook(obj)
-        Set objExWorkbook = obj
+    Public Default Property Get objComWorksheet
+        Set objComWorksheet = m_objComWorksheet
+    End Property
+
+    Public Property Set objComWorksheet(ByRef obj)
+        Set m_objComWorksheet = obj
     End Property
 
     Public Function Close
-        on error resume next
+        'on error resume next
         Err.Clear
         Close = True   ' 戻り値:成功
     End Function
 End Class
+
+' 試算表クラス
+Class CChart
+    Private cFileBasename
+    Private m_objMain       'as CMain
+    Private m_objBalanceBook   'as CExWorkbook
+    Private m_strFilename
+    Private m_Opend
+
+    Private Sub Class_Initialize
+        cFileBasename = "MiracleNikkiJp_chart"
+        Set m_objBalanceBook = Nothing
+        Set m_objMain = Nothing
+        m_strFilename = Empty
+        m_Opend = False
+    End Sub
+    Private Sub Class_Terminate
+        Close
+    End Sub
+
+    Public Property Get objBalanceBook
+        Set objBalanceBook = m_objBalanceBook
+    End Property
+
+    Public Property Get objMain
+        Set objMain = m_objMain
+    End Property
+
+    Public Property Set objMain(obj)
+        Set m_objMain = obj
+    End Property
+
+    Public Property Get strFilename
+        strFilename = m_strFilename
+    End Property
+
+    ' xml形式のアイテム表を開く
+    Public Function OpenXml
+        Dim xml_filename
+        ' カレントディレクトリで探す
+        xml_filename = objFileSystem.GetAbsolutePathName(cFileBasename & ".xml")
+        If Not objFileSystem.FileExists(xml_filename) Then
+            '見つからなかったらエラー
+            OpenXml = False
+            Exit Function
+        End If
+        '見つかったファイルを開く
+        OpenXml = open(xml_filename)
+        m_strFilename = xml_filename
+    End Function
+
+    ' xlsx形式のアイテム表を開く
+    Public Function OpenXlsx
+        Dim xlsx_filename
+        ' カレントディレクトリで探す
+        xlsx_filename = objFileSystem.GetAbsolutePathName(cFileBasename & ".xlsx")
+        If Not objFileSystem.FileExists(xlsx_filename) Then
+            '見つからなかったらエラー
+            OpenXlsx = False
+            Exit Function
+        End If
+        '見つかったファイルを開く
+        OpenXlsx = open(xlsx_filename)
+        m_strFilename = xlsx_filename
+    End Function
+
+    Private Function open(filename)
+        If m_Opend Then
+            '既に開いている
+            open = False
+            Exit Function
+        End If
+        'on error resume next
+        Err.Clear
+        Set m_objBalanceBook = New CExWorkbook
+        If m_objMain.objExApplication.OpenBook(filename, m_objBalanceBook) Then
+            m_Opend = True
+'            If objExWorkbook.GetSheet(strSheetName, objExWorksheet) Then
+'            Else
+'                WScript.echo("ワークシートにアクセスできませんでした")
+'            End If
+            open = True   ' 戻り値:成功
+        Else
+            WScript.echo("ファイルを開けませんでした " & filename)
+            Set m_objBalanceBook = Nothing
+            open = False   ' 戻り値:失敗
+        End If
+    End Function
+
+    Public Function SaveXlsx
+        If Not (m_objBalanceBook Is Nothing) Then
+            Dim filename
+            ' カレントディレクトリに保存する
+            filename = objFileSystem.GetAbsolutePathName(cFileBasename & ".xlsx")
+            SaveXlsx = m_objBalanceBook.SaveAs(filename) ' 戻り値:SaveAsの結果による
+        Else
+            SaveXlsx = False ' 戻り値:失敗
+        End If
+    End Function
+
+    Public Function Close
+        'on error resume next
+        Err.Clear
+        If (Not (m_objBalanceBook Is Nothing)) And m_Opend Then
+            m_objBalanceBook.CloseBook
+        End If
+        m_Opend = False
+        Close = True   ' 戻り値:成功
+    End Function
+End Class
+
+' バランスクラス
+Class CBalance
+    Private cFileBasename
+    Private m_objMain       'as CMain
+    Private m_objBalanceBook   'as CExWorkbook
+    Private m_strFilename
+    Private m_Opend
+
+    Private Sub Class_Initialize
+        cFileBasename = "MiracleNikkiJp_balance"
+        Set m_objBalanceBook = Nothing
+        Set m_objMain = Nothing
+        m_strFilename = Empty
+        m_Opend = False
+    End Sub
+    Private Sub Class_Terminate
+        Close
+    End Sub
+
+    Public Property Get objBalanceBook
+        Set objBalanceBook = m_objBalanceBook
+    End Property
+
+    Public Property Get objMain
+        Set objMain = m_objMain
+    End Property
+
+    Public Property Set objMain(obj)
+        Set m_objMain = obj
+    End Property
+
+    Public Property Get strFilename
+        strFilename = m_strFilename
+    End Property
+
+    ' csv形式のアイテム表を開く
+    Public Function OpenCsv
+        Dim csv_filename
+        ' カレントディレクトリで探す
+        csv_filename = objFileSystem.GetAbsolutePathName(cFileBasename & ".csv")
+        If Not objFileSystem.FileExists(csv_filename) Then
+            '見つからなかったらエラー
+            OpenCsv = False
+            Exit Function
+        End If
+        '見つかったファイルを開く
+        OpenCsv = open(csv_filename)
+        m_strFilename = csv_filename
+    End Function
+
+    ' xlsx形式のアイテム表を開く
+    Public Function OpenXlsx
+        Dim xlsx_filename
+        ' カレントディレクトリで探す
+        xlsx_filename = objFileSystem.GetAbsolutePathName(cFileBasename & ".xlsx")
+        If Not objFileSystem.FileExists(xlsx_filename) Then
+            '見つからなかったらエラー
+            OpenXlsx = False
+            Exit Function
+        End If
+        '見つかったファイルを開く
+        OpenXlsx = open(xlsx_filename)
+        m_strFilename = xlsx_filename
+    End Function
+
+    Private Function open(filename)
+        If m_Opend Then
+            '既に開いている
+            open = False
+            Exit Function
+        End If
+        'on error resume next
+        Err.Clear
+        Set m_objBalanceBook = New CExWorkbook
+        If m_objMain.objExApplication.OpenBook(filename, m_objBalanceBook) Then
+            m_Opend = True
+'            If objExWorkbook.GetSheet(strSheetName, objExWorksheet) Then
+'            Else
+'                WScript.echo("ワークシートにアクセスできませんでした")
+'            End If
+            open = True   ' 戻り値:成功
+        Else
+            WScript.echo("ファイルを開けませんでした " & filename)
+            Set m_objBalanceBook = Nothing
+            open = False   ' 戻り値:失敗
+        End If
+    End Function
+
+    Public Function SaveXlsx
+        If Not (m_objBalanceBook Is Nothing) Then
+            Dim filename
+            ' カレントディレクトリに保存する
+            filename = objFileSystem.GetAbsolutePathName(cFileBasename & ".xlsx")
+            SaveXlsx = m_objBalanceBook.SaveAs(filename) ' 戻り値:SaveAsの結果による
+        Else
+            SaveXlsx = False ' 戻り値:失敗
+        End If
+    End Function
+
+    Public Function Close
+        'on error resume next
+        Err.Clear
+        If (Not (m_objBalanceBook Is Nothing)) And m_Opend Then
+            m_objBalanceBook.CloseBook
+        End If
+        m_Opend = False
+        Close = True   ' 戻り値:成功
+    End Function
+End Class
+
+' アイテム表クラス
+Class CItem
+    Private cFileBasename
+    Private m_objMain       'as CMain
+    Private m_objItemBook   'as CExWorkbook
+    Private m_strFilename
+    Private m_Opend
+
+    Private Sub Class_Initialize
+        cFileBasename = "MiracleNikkiJp_items"
+        Set m_objItemBook = Nothing
+        Set m_objMain = Nothing
+        m_strFilename = Empty
+        m_Opend = False
+    End Sub
+    Private Sub Class_Terminate
+        Close
+    End Sub
+
+    Public Property Get objItemBook
+        Set objItemBook = m_objItemBook
+    End Property
+
+    Public Property Get objMain
+        Set objMain = m_objMain
+    End Property
+
+    Public Property Set objMain(obj)
+        Set m_objMain = obj
+    End Property
+
+    Public Property Get strFilename
+        strFilename = m_strFilename
+    End Property
+
+    ' csv形式のアイテム表を開く
+    Public Function OpenCsv
+        Dim csv_filename
+        ' カレントディレクトリで探す
+        csv_filename = objFileSystem.GetAbsolutePathName(cFileBasename & ".csv")
+        If Not objFileSystem.FileExists(csv_filename) Then
+            ' 見つからなかったら開発用ディレクトリで探す
+            csv_filename = objFileSystem.GetAbsolutePathName("..\" & cFileBasename & "\" & cFileBasename & ".csv")
+            If Not objFileSystem.FileExists(csv_filename) Then
+                '見つからなかったらエラー
+                OpenCsv = False
+                Exit Function
+            End If
+        End If
+        '見つかったファイルを開く
+        OpenCsv = open(csv_filename)
+        m_strFilename = csv_filename
+    End Function
+
+    ' xlsx形式のアイテム表を開く
+    Public Function OpenXlsx
+        Dim xlsx_filename
+        ' カレントディレクトリで探す
+        xlsx_filename = objFileSystem.GetAbsolutePathName(cFileBasename & ".xlsx")
+        If Not objFileSystem.FileExists(xlsx_filename) Then
+            '見つからなかったらエラー
+            OpenXlsx = False
+            Exit Function
+        End If
+        '見つかったファイルを開く
+        OpenXlsx = open(xlsx_filename)
+        m_strFilename = xlsx_filename
+    End Function
+
+    Private Function open(filename)
+        If m_Opend Then
+            '既に開いている
+            open = False
+            Exit Function
+        End If
+        'on error resume next
+        Err.Clear
+        Set m_objItemBook = New CExWorkbook
+        If m_objMain.objExApplication.OpenBook(filename, m_objItemBook) Then
+            m_Opend = True
+'            If objExWorkbook.GetSheet(strSheetName, objExWorksheet) Then
+'            Else
+'                WScript.echo("ワークシートにアクセスできませんでした")
+'            End If
+            open = True   ' 戻り値:成功
+        Else
+            WScript.echo("ファイルを開けませんでした " & filename)
+            Set m_objItemBook = Nothing
+            open = False   ' 戻り値:失敗
+        End If
+    End Function
+
+    Public Function SaveXlsx
+        If Not (m_objItemBook Is Nothing) Then
+            Dim filename
+            ' カレントディレクトリに保存する
+            filename = objFileSystem.GetAbsolutePathName(cFileBasename & ".xlsx")
+            SaveXlsx = m_objItemBook.SaveAs(filename) ' 戻り値:SaveAsの結果による
+        Else
+            SaveXlsx = False ' 戻り値:失敗
+        End If
+    End Function
+
+    Public Function Close
+        'on error resume next
+        Err.Clear
+        If (Not (m_objItemBook Is Nothing)) And m_Opend Then
+            m_objItemBook.CloseBook
+        End If
+        m_Opend = False
+        Close = True   ' 戻り値:成功
+    End Function
+End Class
+
+' Current Directory
+Class CCurrentDirectory
+    Private m_strCurrentDirectory
+
+    Private Sub Class_Initialize
+        m_strCurrentDirectory = objFileSystem.getParentFolderName(WScript.ScriptFullName)
+    End Sub
+
+    Public Default Property Get strCurrentDirectory
+        strCurrentDirectory = m_strCurrentDirectory
+    End Property
+End Class
+
+'日付を示すYYYYMMDD-hhmmss形式の15文字の文字列を作成する
+Function DateTimeString(timevalue)
+    Dim strYear
+    Dim strMonth
+    Dim strDay
+    Dim strHour
+    Dim strMinute
+    Dim strSecond
+    Dim tmp
+
+    tmp = Year(timevalue)
+    If tmp < 10 Then
+        strYear = "000" & CStr(tmp)
+    ElseIf tmp < 100 Then
+        strYear = "00" & CStr(tmp)
+    ElseIf tmp < 1000 Then
+        strYear = "0" & CStr(tmp)
+    Else
+        strYear = CStr(tmp)
+    End If
+    tmp = Month(timevalue)
+    If tmp < 10 Then
+        strMonth = "0" & CStr(tmp)
+    Else
+        strMonth = CStr(tmp)
+    End If
+    tmp = Day(timevalue)
+    If tmp < 10 Then
+        strDay = "0" & CStr(tmp)
+    Else
+        strDay = CStr(tmp)
+    End If
+    tmp = Hour(timevalue)
+    If tmp < 10 Then
+        strHour = "0" & CStr(tmp)
+    Else
+        strHour = CStr(tmp)
+    End If
+    tmp = Minute(timevalue)
+    If tmp < 10 Then
+        strMinute = "0" & CStr(tmp)
+    Else
+        strMinute = CStr(tmp)
+    End If
+    tmp = Second(timevalue)
+    If tmp < 10 Then
+        strSecond = "0" & CStr(tmp)
+    Else
+        strSecond = CStr(tmp)
+    End If
+    DateTimeString = strYear & strMonth & strDay & "-" & strHour & strMinute & strSecond
+End Function
+
+' バックアップ用のファイル名を生成する
+Function BackupFilename(filename)
+    BackupFilename = filename & ".backup_" & DateTimeString(Now)
+End Function
