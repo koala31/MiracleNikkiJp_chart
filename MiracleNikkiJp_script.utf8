@@ -113,12 +113,12 @@ Class CMain
             Set objChart = New CChart
             Set objChart.objMain = Me
             ' 試算表.xlsxを開く
-            objChart.OpenXlsx
-            ' アイテム所有情報バックアップ
-            ' ToDo ###########################
-
-            ' 試算表を閉じる
-            Set objChart = Nothing
+            If objChart.OpenXlsx = True Then
+                ' アイテム所有情報バックアップ
+                objChart.MyItemsCreate
+                ' 試算表を閉じる
+                Set objChart = Nothing
+            End If
             ' アイテム表.xlsxを閉じる
             Set objItem = Nothing
             ' アイテム表オブジェクトの再生成
@@ -391,7 +391,7 @@ Class CExWorkbook
     Private m_objExWorksheets()  ' child as CExWorksheet
     Private m_objComWorkbook     ' COM Automation Excel Workbook
     Private m_objComActiveWindow ' active COM Automation Excel Window
-    Private m_Opend
+    Private m_bOpend
 
     Private Sub Class_Initialize
         Set m_objExApplication = Nothing
@@ -399,7 +399,7 @@ Class CExWorkbook
         Set m_objExWorksheets(0) = Nothing
         Set m_objComWorkbook = Nothing
         Set m_objComActiveWindow = Nothing
-        m_Opend = False
+        m_bOpend = False
     End Sub
     Private Sub Class_Terminate
         ' 閉じる
@@ -421,7 +421,7 @@ Class CExWorkbook
     Public Property Set objComWorkbook(ByRef obj)
         Set m_objComWorkbook = obj
         If Not (obj Is Nothing) Then
-            m_Opend = True
+            m_bOpend = True
         End If
     End Property
 
@@ -503,7 +503,7 @@ Class CExWorkbook
     End Function
 
     Public Function CloseBook
-        If Not m_Opend Then
+        If Not m_bOpend Then
             ' 既に閉じている
             CloseBook = True
             Exit Function
@@ -515,7 +515,7 @@ Class CExWorkbook
         'Excelファイルを閉じる
         m_objComWorkbook.Close
         If Err.number = 0 Then
-            m_Opend = False
+            m_bOpend = False
             m_objExApplication.BookClosed Me   '親に通知
             CloseBook = True   ' 戻り値:成功
         Else
@@ -607,29 +607,46 @@ Class CExWorksheet
         Err.Clear
         Close = True   ' 戻り値:成功
     End Function
+
+    'row, columnで指定したセルのRangeオブジェクトを返す
+    Public Function Cell(row, column)
+        Set Cell = m_objComWorksheet.Cells(row, column)
+    End Function
 End Class
 
 ' 試算表クラス
 Class CChart
-    Private cFileBasename
+    Private strFileBasename
+    Private strQuestSheetname
+    Private strNumberRangename
+    Private strOwnRangename
     Private m_objMain       'as CMain
-    Private m_objBalanceBook   'as CExWorkbook
+    Private m_objChartBook   'as CExWorkbook
+    Private m_objQuestSheet   'as CExWorksheet
     Private m_strFilename
-    Private m_Opend
+    Private m_bOpend
 
     Private Sub Class_Initialize
-        cFileBasename = "MiracleNikkiJp_chart"
-        Set m_objBalanceBook = Nothing
+        strFileBasename = "MiracleNikkiJp_chart"
+        strQuestSheetname = "クエスト"
+        strNumberRangename = "整理番号"
+        strOwnRangename = "所有"
         Set m_objMain = Nothing
+        Set m_objChartBook = Nothing
+        Set m_objQuestSheet = Nothing
         m_strFilename = Empty
-        m_Opend = False
+        m_bOpend = False
     End Sub
     Private Sub Class_Terminate
         Close
     End Sub
 
-    Public Property Get objBalanceBook
-        Set objBalanceBook = m_objBalanceBook
+    Public Property Get objChartBook
+        Set objChartBook = m_objChartBook
+    End Property
+
+    Public Property Get objChartSheet
+        Set objChartSheet = m_objQuestSheet
     End Property
 
     Public Property Get objMain
@@ -648,7 +665,7 @@ Class CChart
     Public Function OpenXml
         Dim xml_filename
         ' カレントディレクトリで探す
-        xml_filename = objFileSystem.GetAbsolutePathName(cFileBasename & ".xml")
+        xml_filename = objFileSystem.GetAbsolutePathName(strFileBasename & ".xml")
         If Not objFileSystem.FileExists(xml_filename) Then
             '見つからなかったらエラー
             OpenXml = False
@@ -663,7 +680,7 @@ Class CChart
     Public Function OpenXlsx
         Dim xlsx_filename
         ' カレントディレクトリで探す
-        xlsx_filename = objFileSystem.GetAbsolutePathName(cFileBasename & ".xlsx")
+        xlsx_filename = objFileSystem.GetAbsolutePathName(strFileBasename & ".xlsx")
         If Not objFileSystem.FileExists(xlsx_filename) Then
             '見つからなかったらエラー
             OpenXlsx = False
@@ -675,34 +692,38 @@ Class CChart
     End Function
 
     Private Function open(filename)
-        If m_Opend Then
+        If m_bOpend Then
             '既に開いている
             open = False
             Exit Function
         End If
         'on error resume next
         Err.Clear
-        Set m_objBalanceBook = New CExWorkbook
-        If m_objMain.objExApplication.OpenBook(filename, m_objBalanceBook) Then
-            m_Opend = True
-'            If objExWorkbook.GetSheet(strSheetName, objExWorksheet) Then
-'            Else
-'                WScript.echo("ワークシートにアクセスできませんでした")
-'            End If
-            open = True   ' 戻り値:成功
+        Set m_objChartBook = New CExWorkbook
+        If m_objMain.objExApplication.OpenBook(filename, m_objChartBook) Then
+            Set m_objQuestSheet = New CExWorksheet
+            If m_objChartBook.GetSheet(strQuestSheetname, m_objQuestSheet) Then
+                m_bOpend = True
+                open = True   ' 戻り値:成功
+            Else
+                WScript.echo("ワークシートにアクセスできませんでした")
+                Set m_objQuestSheet = Nothing
+                Set m_objChartBook = Nothing
+                open = False   ' 戻り値:失敗
+            End If
         Else
             WScript.echo("ファイルを開けませんでした " & filename)
-            Set m_objBalanceBook = Nothing
+            Set m_objChartBook = Nothing
             open = False   ' 戻り値:失敗
         End If
     End Function
 
     Public Function SaveXlsx
-        If Not (m_objBalanceBook Is Nothing) Then
+        If Not (m_objChartBook Is Nothing) Then
             Dim filename
             ' カレントディレクトリに保存する
-            filename = objFileSystem.GetAbsolutePathName(cFileBasename & ".xlsx")
-            SaveXlsx = m_objBalanceBook.SaveAs(filename) ' 戻り値:SaveAsの結果による
+            filename = objFileSystem.GetAbsolutePathName(strFileBasename & ".xlsx")
+            SaveXlsx = m_objChartBook.SaveAs(filename) ' 戻り値:SaveAsの結果による
         Else
             SaveXlsx = False ' 戻り値:失敗
         End If
@@ -711,28 +732,62 @@ Class CChart
     Public Function Close
         'on error resume next
         Err.Clear
-        If (Not (m_objBalanceBook Is Nothing)) And m_Opend Then
-            m_objBalanceBook.CloseBook
+        If (Not (m_objChartBook Is Nothing)) And m_bOpend Then
+            m_objChartBook.CloseBook
         End If
-        m_Opend = False
+        m_bOpend = False
         Close = True   ' 戻り値:成功
+    End Function
+
+    'アイテム所有情報のバックアップ
+    Public Function MyItemsCreate
+        'on error resume next
+        Err.Clear
+        If m_bOpend Then
+            Dim objNumberRange  '名前付き範囲"整理番号"
+            Set objNumberRange = m_objQuestSheet.objComWorksheet.Range(strNumberRangename)
+            Dim iNumberColumn   '整理番号の列番号
+            iNumberColumn = objNumberRange.Cells(1).Column
+            Dim objOwnRange '名前付き範囲"所有"
+            Set objOwnRange = m_objQuestSheet.objComWorksheet.Range(strOwnRangename)
+            Dim objRange1   '名前付き範囲"所有"の1つのセル
+            For Each objRange1 In objOwnRange.Cells '所有の各セルについて
+                If objRange1.Value = "◯" Then   '◯なら所有として
+                    Dim iNumber
+                    iNumber = m_objQuestSheet.Cell(objRange1.Row, iNumberColumn).Value
+                End If
+            Next
+            MyItemsCreate = True
+        Else
+            MyItemsCreate = False
+        End If
+    End Function
+
+    'アイテム所有情報のリストア
+    Public Function MyItemsRead
+        'on error resume next
+        Err.Clear
+        If m_bOpend Then
+        Else
+            MyItemsCreate = False
+        End If
     End Function
 End Class
 
 ' バランスクラス
 Class CBalance
-    Private cFileBasename
+    Private strFileBasename
     Private m_objMain       'as CMain
     Private m_objBalanceBook   'as CExWorkbook
     Private m_strFilename
-    Private m_Opend
+    Private m_bOpend
 
     Private Sub Class_Initialize
-        cFileBasename = "MiracleNikkiJp_balance"
-        Set m_objBalanceBook = Nothing
+        strFileBasename = "MiracleNikkiJp_balance"
         Set m_objMain = Nothing
+        Set m_objBalanceBook = Nothing
         m_strFilename = Empty
-        m_Opend = False
+        m_bOpend = False
     End Sub
     Private Sub Class_Terminate
         Close
@@ -754,11 +809,11 @@ Class CBalance
         strFilename = m_strFilename
     End Property
 
-    ' csv形式のアイテム表を開く
+    ' csv形式のバランスを開く
     Public Function OpenCsv
         Dim csv_filename
         ' カレントディレクトリで探す
-        csv_filename = objFileSystem.GetAbsolutePathName(cFileBasename & ".csv")
+        csv_filename = objFileSystem.GetAbsolutePathName(strFileBasename & ".csv")
         If Not objFileSystem.FileExists(csv_filename) Then
             '見つからなかったらエラー
             OpenCsv = False
@@ -769,11 +824,11 @@ Class CBalance
         m_strFilename = csv_filename
     End Function
 
-    ' xlsx形式のアイテム表を開く
+    ' xlsx形式のバランスを開く
     Public Function OpenXlsx
         Dim xlsx_filename
         ' カレントディレクトリで探す
-        xlsx_filename = objFileSystem.GetAbsolutePathName(cFileBasename & ".xlsx")
+        xlsx_filename = objFileSystem.GetAbsolutePathName(strFileBasename & ".xlsx")
         If Not objFileSystem.FileExists(xlsx_filename) Then
             '見つからなかったらエラー
             OpenXlsx = False
@@ -785,7 +840,7 @@ Class CBalance
     End Function
 
     Private Function open(filename)
-        If m_Opend Then
+        If m_bOpend Then
             '既に開いている
             open = False
             Exit Function
@@ -794,7 +849,7 @@ Class CBalance
         Err.Clear
         Set m_objBalanceBook = New CExWorkbook
         If m_objMain.objExApplication.OpenBook(filename, m_objBalanceBook) Then
-            m_Opend = True
+            m_bOpend = True
 '            If objExWorkbook.GetSheet(strSheetName, objExWorksheet) Then
 '            Else
 '                WScript.echo("ワークシートにアクセスできませんでした")
@@ -811,7 +866,7 @@ Class CBalance
         If Not (m_objBalanceBook Is Nothing) Then
             Dim filename
             ' カレントディレクトリに保存する
-            filename = objFileSystem.GetAbsolutePathName(cFileBasename & ".xlsx")
+            filename = objFileSystem.GetAbsolutePathName(strFileBasename & ".xlsx")
             SaveXlsx = m_objBalanceBook.SaveAs(filename) ' 戻り値:SaveAsの結果による
         Else
             SaveXlsx = False ' 戻り値:失敗
@@ -821,28 +876,28 @@ Class CBalance
     Public Function Close
         'on error resume next
         Err.Clear
-        If (Not (m_objBalanceBook Is Nothing)) And m_Opend Then
+        If (Not (m_objBalanceBook Is Nothing)) And m_bOpend Then
             m_objBalanceBook.CloseBook
         End If
-        m_Opend = False
+        m_bOpend = False
         Close = True   ' 戻り値:成功
     End Function
 End Class
 
 ' アイテム表クラス
 Class CItem
-    Private cFileBasename
+    Private strFileBasename
     Private m_objMain       'as CMain
     Private m_objItemBook   'as CExWorkbook
     Private m_strFilename
-    Private m_Opend
+    Private m_bOpend
 
     Private Sub Class_Initialize
-        cFileBasename = "MiracleNikkiJp_items"
-        Set m_objItemBook = Nothing
+        strFileBasename = "MiracleNikkiJp_items"
         Set m_objMain = Nothing
+        Set m_objItemBook = Nothing
         m_strFilename = Empty
-        m_Opend = False
+        m_bOpend = False
     End Sub
     Private Sub Class_Terminate
         Close
@@ -868,10 +923,10 @@ Class CItem
     Public Function OpenCsv
         Dim csv_filename
         ' カレントディレクトリで探す
-        csv_filename = objFileSystem.GetAbsolutePathName(cFileBasename & ".csv")
+        csv_filename = objFileSystem.GetAbsolutePathName(strFileBasename & ".csv")
         If Not objFileSystem.FileExists(csv_filename) Then
             ' 見つからなかったら開発用ディレクトリで探す
-            csv_filename = objFileSystem.GetAbsolutePathName("..\" & cFileBasename & "\" & cFileBasename & ".csv")
+            csv_filename = objFileSystem.GetAbsolutePathName("..\" & strFileBasename & "\" & strFileBasename & ".csv")
             If Not objFileSystem.FileExists(csv_filename) Then
                 '見つからなかったらエラー
                 OpenCsv = False
@@ -887,7 +942,7 @@ Class CItem
     Public Function OpenXlsx
         Dim xlsx_filename
         ' カレントディレクトリで探す
-        xlsx_filename = objFileSystem.GetAbsolutePathName(cFileBasename & ".xlsx")
+        xlsx_filename = objFileSystem.GetAbsolutePathName(strFileBasename & ".xlsx")
         If Not objFileSystem.FileExists(xlsx_filename) Then
             '見つからなかったらエラー
             OpenXlsx = False
@@ -899,7 +954,7 @@ Class CItem
     End Function
 
     Private Function open(filename)
-        If m_Opend Then
+        If m_bOpend Then
             '既に開いている
             open = False
             Exit Function
@@ -908,7 +963,7 @@ Class CItem
         Err.Clear
         Set m_objItemBook = New CExWorkbook
         If m_objMain.objExApplication.OpenBook(filename, m_objItemBook) Then
-            m_Opend = True
+            m_bOpend = True
 '            If objExWorkbook.GetSheet(strSheetName, objExWorksheet) Then
 '            Else
 '                WScript.echo("ワークシートにアクセスできませんでした")
@@ -925,7 +980,7 @@ Class CItem
         If Not (m_objItemBook Is Nothing) Then
             Dim filename
             ' カレントディレクトリに保存する
-            filename = objFileSystem.GetAbsolutePathName(cFileBasename & ".xlsx")
+            filename = objFileSystem.GetAbsolutePathName(strFileBasename & ".xlsx")
             SaveXlsx = m_objItemBook.SaveAs(filename) ' 戻り値:SaveAsの結果による
         Else
             SaveXlsx = False ' 戻り値:失敗
@@ -935,10 +990,10 @@ Class CItem
     Public Function Close
         'on error resume next
         Err.Clear
-        If (Not (m_objItemBook Is Nothing)) And m_Opend Then
+        If (Not (m_objItemBook Is Nothing)) And m_bOpend Then
             m_objItemBook.CloseBook
         End If
-        m_Opend = False
+        m_bOpend = False
         Close = True   ' 戻り値:成功
     End Function
 End Class
