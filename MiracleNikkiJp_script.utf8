@@ -120,12 +120,12 @@ WScript.Quit()
 Class CDisableScreenUpdating
     Private m_bSave '以前の状態を保存
     Private Sub Class_Initialize
-        'on error resume next
+        on error resume next
         m_bSave = objMain.objExApplication.objComApplication.ScreenUpdating
         objMain.objExApplication.objComApplication.ScreenUpdating = False
     End Sub
     Private Sub Class_Terminate
-        'on error resume next
+        on error resume next
         objMain.objExApplication.objComApplication.ScreenUpdating = m_bSave
     End Sub
 End Class
@@ -135,12 +135,12 @@ End Class
 Class CEnableScreenUpdating
     Private m_bSave '以前の状態を保存
     Private Sub Class_Initialize
-        'on error resume next
+        on error resume next
         m_bSave = objMain.objExApplication.objComApplication.ScreenUpdating
         objMain.objExApplication.objComApplication.ScreenUpdating = True
     End Sub
     Private Sub Class_Terminate
-        'on error resume next
+        on error resume next
         objMain.objExApplication.objComApplication.ScreenUpdating = m_bSave
     End Sub
 End Class
@@ -150,12 +150,12 @@ End Class
 Class CDisableEvents
     Private m_bSave '以前の状態を保存
     Private Sub Class_Initialize
-        'on error resume next
+        on error resume next
         m_bSave = objMain.objExApplication.objComApplication.EnableEvents
         objMain.objExApplication.objComApplication.EnableEvents = False
     End Sub
     Private Sub Class_Terminate
-        'on error resume next
+        on error resume next
         objMain.objExApplication.objComApplication.EnableEvents = m_bSave
     End Sub
 End Class
@@ -165,12 +165,12 @@ End Class
 Class CEnableEvents
     Private m_bSave '以前の状態を保存
     Private Sub Class_Initialize
-        'on error resume next
+        on error resume next
         m_bSave = objMain.objExApplication.objComApplication.EnableEvents
         objMain.objExApplication.objComApplication.EnableEvents = True
     End Sub
     Private Sub Class_Terminate
-        'on error resume next
+        on error resume next
         objMain.objExApplication.objComApplication.EnableEvents = m_bSave
     End Sub
 End Class
@@ -183,12 +183,12 @@ Const xlCalculationSemiautomatic = 2
 Class CDisableCalculation
     Private m_iSave '以前の状態を保存
     Private Sub Class_Initialize
-        'on error resume next
+        on error resume next
         m_iSave = objMain.objExApplication.objComApplication.Calculation
         objMain.objExApplication.objComApplication.Calculation = xlCalculationManual
     End Sub
     Private Sub Class_Terminate
-        'on error resume next
+        on error resume next
         objMain.objExApplication.objComApplication.Calculation = m_iSave
     End Sub
 End Class
@@ -198,12 +198,12 @@ End Class
 Class CEnableCalculation
     Private m_iSave '以前の状態を保存
     Private Sub Class_Initialize
-        'on error resume next
+        on error resume next
         m_iSave = objMain.objExApplication.objComApplication.Calculation
         objMain.objExApplication.objComApplication.Calculation = xlCalculationAutomatic
     End Sub
     Private Sub Class_Terminate
-        'on error resume next
+        on error resume next
         objMain.objExApplication.objComApplication.Calculation = m_iSave
     End Sub
 End Class
@@ -481,7 +481,7 @@ Class CExApplication
     End Property
 
     Public Function Create
-        'on error resume next
+        on error resume next
         Err.Clear
         Create = True   ' 戻り値のプリセット
         If m_Created Then
@@ -510,7 +510,7 @@ Class CExApplication
             OpenBook = False  ' 戻り値:失敗
             Exit Function
         End If
-        'on error resume next
+        on error resume next
         Err.Clear
         'Excelファイルを開く
         WScript.Sleep cSleep ' 指定時間他のプログラムを回す
@@ -534,7 +534,7 @@ Class CExApplication
             NewBook = False  ' 戻り値:失敗
             Exit Function
         End If
-        'on error resume next
+        on error resume next
         Err.Clear
         'Excelファイルを開く
         Dim objComBook
@@ -549,7 +549,7 @@ Class CExApplication
     End Function
 
     Public Function Quit
-        'on error resume next
+        on error resume next
         'child workbookを破棄
         deleteChilds
         If m_Created Then
@@ -699,7 +699,7 @@ Class CExWorkbook
     End Property
 
     Public Function GetSheet(sheetname, ByRef obj)
-        'on error resume next
+        on error resume next
         Err.Clear
         Dim objComSheet
         Set objComSheet = m_objComWorkbook.Worksheets(sheetname)
@@ -713,7 +713,7 @@ Class CExWorkbook
     End Function
 
     Public Function NewSheet(ByRef obj)
-        'on error resume next
+        on error resume next
         Err.Clear
         Dim objComSheet
         Set objComSheet = m_objComWorkbook.Worksheets.Add
@@ -727,7 +727,7 @@ Class CExWorkbook
     End Function
 
     Public Function SaveAs(filename)
-        'on error resume next
+        on error resume next
         Err.Clear
         Dim backup_filename
         backup_filename = BackupFilename(filename)
@@ -868,7 +868,7 @@ Class CExWorksheet
     End Property
 
     Public Function Close
-        'on error resume next
+        on error resume next
         Err.Clear
         Close = True   ' 戻り値:成功
     End Function
@@ -1017,7 +1017,7 @@ Class CChart
             open = False
             Exit Function
         End If
-        'on error resume next
+        on error resume next
         Err.Clear
         Set m_objChartBook = New CExWorkbook
         If m_objMain.objExApplication.OpenBook(filename, m_objChartBook) Then
@@ -1050,7 +1050,7 @@ Class CChart
     End Function
 
     Public Function Close
-        'on error resume next
+        on error resume next
         Err.Clear
         If (Not (m_objChartBook Is Nothing)) And m_bOpend Then
             m_objChartBook.CloseBook
@@ -1067,7 +1067,7 @@ Class CChart
         Set objDisableScreenUpdating = New CDisableScreenUpdating
         Set objDisableEvents = New CDisableEvents
         Set objDisableCalculation = New CDisableCalculation
-        'on error resume next
+        on error resume next
         Err.Clear
         If m_bOpend Then
             Dim objMyItems      'アイテム所有情報
@@ -1115,7 +1115,7 @@ Class CChart
         Set objDisableScreenUpdating = New CDisableScreenUpdating
         Set objDisableEvents = New CDisableEvents
         Set objDisableCalculation = New CDisableCalculation
-        'on error resume next
+        on error resume next
         Err.Clear
         If m_bOpend Then    '試算表オープン済
             Dim objNumberRange  '名前付き範囲"整理番号"
@@ -1253,7 +1253,7 @@ Class CBalance
             open = False
             Exit Function
         End If
-        'on error resume next
+        on error resume next
         Err.Clear
         Set m_objBalanceBook = New CExWorkbook
         If m_objMain.objExApplication.OpenBook(filename, m_objBalanceBook) Then
@@ -1282,7 +1282,7 @@ Class CBalance
     End Function
 
     Public Function Close
-        'on error resume next
+        on error resume next
         Err.Clear
         If (Not (m_objBalanceBook Is Nothing)) And m_bOpend Then
             m_objBalanceBook.CloseBook
@@ -1396,7 +1396,7 @@ Class CItem
             open = False
             Exit Function
         End If
-        'on error resume next
+        on error resume next
         Err.Clear
         Set m_objItemBook = New CExWorkbook
         If m_objMain.objExApplication.OpenBook(filename, m_objItemBook) Then
@@ -1425,7 +1425,7 @@ Class CItem
     End Function
 
     Public Function Close
-        'on error resume next
+        on error resume next
         Err.Clear
         If (Not (m_objItemBook Is Nothing)) And m_bOpend Then
             m_objItemBook.CloseBook
@@ -1464,7 +1464,7 @@ Class CInternetFile
         If Not (m_objStream Is Nothing) Then
             m_objStream = Nothing
         End If
-        'on error resume next
+        on error resume next
         Err.Clear
         set m_objStream = CreateObject("ADODB.Stream")
         If Err.number <> 0 Then
@@ -1478,7 +1478,7 @@ Class CInternetFile
     'インターネットからファイルを取得してストリームを作成
     Public Function GetUrl(strUrl)
         GetUrl = False
-        'on error resume next
+        on error resume next
         Set m_objMsxml = CreateObject("Msxml2.ServerXMLHTTP")
         m_objMsxml.Open "GET", strUrl, False
         m_objMsxml.Send
@@ -1503,7 +1503,7 @@ Class CInternetFile
 
     '作成したストリームをファイルに保存
     Public Function SaveToFile(filename)
-        'on error resume next
+        on error resume next
         SaveToFile = False
         Dim strFilename
         strFilename = objFileSystem.GetAbsolutePathName(filename)
@@ -1587,7 +1587,7 @@ Class CNumbers
         If m_bUsable Then
             Close
         End If
-        'on error resume next
+        on error resume next
         Err.Clear
         set m_objStream = CreateObject("ADODB.Stream")
         If Err.number <> 0 Then
@@ -1628,7 +1628,7 @@ Class CNumbers
     'ファイル保存
     Private Function Save
         If m_bUsable Then
-            'on error resume next
+            on error resume next
             Err.Clear
             m_objStream.Position = 0 'データをストリームに書き込む開始位置はストリームの先頭
             m_objStream.WriteText m_strNumberLines, adWriteChar   '最後に改行を付けない
