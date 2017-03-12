@@ -1,12 +1,343 @@
 ﻿Option Explicit
 
-Dim strVersion
-strVersion = "Beta1"
+Const cVersion = "beta1"
+Const cRetry = 3    ' リトライ数
+Const cSleep = 100
 
+' 引数の確認表示
 Dim objArgs
 Set objArgs = WScript.Arguments
 Dim I
 For I = 0 to objArgs.Count - 1
    WScript.Echo "objArgs(" & I & ") = " & objArgs(I)
 Next
+
+Dim strCommand ' コマンド識別文字列
+strCommand = objArgs(0)
+
+' メイン処理のインスタンスを生成してコマンド実行
+Dim objMain
+Set objMain = New CMain
+
+'メインループ
+Do While strCommand <> "end"
+    Select Case objArgs(0)
+        Case "setup"
+            objMain.Command(strCommand)
+            strCommand = "end"  ' 続いて終了
+        Case "debug_poll"
+            If objMain.Poll() Then   ' メイン処理のポーリングを実行
+                Err.Clear
+                WScript.Sleep cSleep ' 指定時間他のプログラムを回す
+            Else
+                strCommand = "end"   ' 続いて終了
+            End If
+        Case Else
+            strCommand = "end"  ' 続いて終了
+    End Select
+Loop
+
+' 終了表示
 WScript.echo("実行しました")
+'スクリプトの終了
+WScript.Quit()
+
+' メイン処理のクラス
+Class CMain
+    Public strWorkbookName
+    Public objExApplication
+    Public objExWorkbook
+    Public objExWorksheet
+
+    Private Sub Class_Initialize
+        Set objExApplication = Nothing
+        Set objExWorkbook = Nothing
+        Set objExWorksheet = Nothing
+
+        strWorkbookName = "C:\home\koala31\source\MiracleNikkiJp_chart\deb_bkup_test_src.csv"
+
+        Set objExApplication = New CExApplication
+        Set objExWorkbook = New CExWorkbook
+        Set objExWorkbook.ExApplication = objExApplication
+        objExWorkbook.Open(strWorkbookName)
+        Set objExWorksheet = New CExWorksheet
+        Set objExWorksheet.ExWorkbook = objExWorkbook
+        'objExWorksheet.OpenByIndex(0)
+        objExWorksheet.OpenByName("deb_bkup_test_src")
+
+    End Sub
+    Private Sub Class_Terminate
+        objExApplication.Quit
+    End Sub
+End Class
+
+' Excel Automation Application wrapper
+Class CExApplication
+    Public objComApplication ' COM Automation Excel Application
+    Public objExWorkbooks()  ' child as CExWorkbook
+    Private m_Created
+
+    Private Sub Class_Initialize
+        Set objComApplication = Nothing
+        ReDim objExWorkbooks(0)
+        Set objExWorkbooks(0) = Nothing
+        m_Created = False
+    End Sub
+    Private Sub Class_Terminate
+        ' child解放
+        DeleteChild
+        ' Excelアプリケーションオブジェクトの破棄
+        Quit
+    End Sub
+
+    Public Default Property Get ComApplication
+        Set ComApplication = objComApplication
+    End Property
+
+    Public Property Get ExWorkbooks
+        ExWorkbooks = objExWorkbooks
+    End Property
+
+    Public Property Get Created
+        Created = m_Created
+    End Property
+
+    Public Function Create
+        on error resume next
+        Err.Clear
+        Create = True   ' 戻り値のプリセット
+        If m_Created Then
+            Exit Function   ' 既に作成済み
+        End If
+        'Excelオブジェクトを作成
+        Set objComApplication = WScript.CreateObject("Excel.Application")
+        If Err.number = 0 Then
+            m_Created = True
+            'ウィンドウを可視状態にする
+            objComApplication.Visible = True
+            Create = True   ' 戻り値:成功
+        Else
+            Set objComApplication = Nothing
+            m_Created = False
+            Create = False   ' 戻り値:失敗
+        End If
+    End Function
+
+    Public Function Quit
+        on error resume next
+        'child workbookを破棄
+        DeleteChild
+        If m_Created Then
+            Dim t
+            For t = 0 To cRetry
+                Err.Clear
+                objComApplication.Quit
+                If Err.number = 0 Then
+                    Set objComApplication = Nothing
+                    Quit = True   ' 戻り値:成功
+                Else
+                    Quit = False   ' 戻り値:失敗
+                    ' 少し待ってみる
+                    WScript.Sleep cSleep
+                End If
+            Next
+        End If
+    End Function
+
+    Private Function DeleteChild
+        Dim t
+        For t = 0 To cRetry
+            DeleteChild = True
+            Dim i
+            For i = 0 To UBound(objExWorkbooks)
+                If Not (objExWorkbooks(i) Is Nothing) Then
+                    If objExWorkbooks(i).Close Then
+                        Set objExWorkbooks(i) = Nothing
+                    Else
+                        DeleteChild = False
+                    End If
+                End If
+            Next
+            ' 全成功判定
+            If DeleteChild Then
+                Exit For
+            End If
+            ' 少し待ってみる
+            WScript.Sleep cSleep
+        Next
+        ReDim objExWorkbooks(0)
+    End Function
+End Class
+
+' Excel Automation Workbook wrapper
+Class CExWorkbook
+    Public objComWorkbook    ' COM Automation Excel Workbook
+    Public objExApplication  ' parent as CExApplication
+    Public objExWorksheets() ' child as CExWorksheet
+
+    Private Sub Class_Initialize
+        Set objComWorkbook = Nothing
+        Set objExApplication = Nothing
+        ReDim objExWorksheets(0)
+        Set objExWorksheets(0) = Nothing
+    End Sub
+    Private Sub Class_Terminate
+        ' child解放
+        DeleteChild
+    End Sub
+
+    Public Default Property Get ComWorkbook
+        Set ComWorkbook = objComWorkbook
+    End Property
+
+    Public Property Get ExApplication
+        Set ExApplication = objExApplication
+    End Property
+
+    Public Property Set ExApplication(obj)
+        Set objExApplication = obj
+    End Property
+
+    Public Property Get ExWorksheets
+        ExWorksheets = objExWorksheets
+    End Property
+
+    Public Function Open(pathname)
+        on error resume next
+        Err.Clear
+        'Applicationオブジェクトの確認
+        If objExApplication Is Nothing Then
+            Set objExApplication = New CExApplication
+        End If
+        If Not objExApplication.Created Then
+            objExApplication.Create
+        End If
+        If objExApplication.Created Then
+            'Excelファイルを開く
+            Set objComWorkbook = objExApplication.ComApplication.Workbooks.Open(pathname)
+            If Err.number = 0 Then
+                Create = True   ' 戻り値:成功
+            Else
+                Set objComWorkbook = Nothing
+                Create = False   ' 戻り値:失敗
+            End If
+        Else
+            Set objComWorkbook = Nothing
+            Create = False   ' 戻り値:失敗
+        End If
+    End Function
+
+    Public Function Close
+        on error resume next
+        Err.Clear
+        'child worksheetを破棄
+        DeleteChild
+        'Excelファイルを閉じる
+        objComWorkbook.Close
+        If Err.number = 0 Then
+            Create = True   ' 戻り値:成功
+        Else
+            Set objComApplication = Nothing
+            Create = False   ' 戻り値:失敗
+        End If
+    End Function
+
+    Private Function DeleteChild
+        Dim t
+        For t = 0 To cRetry
+            DeleteChild = True
+            Dim i
+            For i = 0 To UBound(objExWorksheets)
+                If Not (objExWorksheets(i) Is Nothing) Then
+                    If objExWorksheets(i).Close Then
+                        Set objExWorksheets(i) = Nothing
+                    Else
+                        DeleteChild = False
+                    End If
+                End If
+            Next
+            ' 全成功判定
+            If DeleteChild Then
+                Exit For
+            End If
+            ' 少し待ってみる
+            WScript.Sleep cSleep
+        Next
+        ReDim objExWorksheets(0)
+    End Function
+End Class
+
+' Excel Automation Worksheet wrapper
+Class CExWorksheet
+    Public objComWorksheet ' COM Automation Excel Worksheet
+    Public objExWorkbook   ' parent as CExWorkbook
+
+    Private Sub Class_Initialize
+        Set objComWorksheet = Nothing
+        Set objExWorkbook = Nothing
+    End Sub
+    Private Sub Class_Terminate
+    End Sub
+
+    Public Default Property Get ComWorksheet
+        Set ComWorksheet = objComWorksheet
+    End Property
+
+    Public Property Get ExWorkbook
+        Set ExWorkbook = objExWorkbook
+    End Property
+
+    Public Property Set ExWorkbook(obj)
+        Set objExWorkbook = obj
+    End Property
+
+    Public Function OpenByIndex(i)
+        on error resume next
+        Err.Clear
+        ' ワークブックオブジェクトの確認
+        If objExWorkbook Is Nothing Then
+            OpenByIndex = False   ' 戻り値:失敗
+            Exit Function
+        End If
+
+        Err.Clear
+        Dim obj
+        Set obj = objExWorkbook.ComWorkbook
+        Set objComWorksheet = obj.Worksheets(i)
+'        Set objComWorksheet = objExWorkbook.ComWorkbook.Worksheets(i)
+        If Err.number = 0 Then
+            Set objWorkbook = Nothing
+            OpenByIndex = True   ' 戻り値:成功
+        Else
+            OpenByIndex = False  ' 戻り値:失敗
+        End If
+    End Function
+
+    Public Function OpenByName(sheetname)
+        on error resume next
+        Err.Clear
+        ' ワークブックオブジェクトの確認
+        If objExWorkbook Is Nothing Then
+            OpenByIndex = False   ' 戻り値:失敗
+            Exit Function
+        End If
+
+        Err.Clear
+        Dim obj
+        Set obj = objExWorkbook.ComWorkbook
+        Set objComWorksheet = obj.Worksheets(sheetname)
+'        Set objComWorksheet = objExWorkbook.ComWorkbook.Worksheets(sheetname)
+        If Err.number = 0 Then
+            Set objWorkbook = Nothing
+            OpenByIndex = True   ' 戻り値:成功
+        Else
+            OpenByIndex = False  ' 戻り値:失敗
+        End If
+    End Function
+
+    Public Function Close
+        on error resume next
+        Err.Clear
+        Close = True   ' 戻り値:成功
+    End Function
+End Class
