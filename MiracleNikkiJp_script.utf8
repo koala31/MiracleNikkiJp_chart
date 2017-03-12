@@ -4,10 +4,18 @@ Const cVersion = "beta1"
 Const cRetry = 3    ' リトライ数
 Const cSleep = 100
 
-' 既定の定数
+' 知られている定数
 Const TristateTrue = -1
 Const TristateFalse = 0
 Const TristateUseDefault = -2
+Const adWriteChar = 0
+Const adWriteLine = 1
+Const adSaveCreateNotExist = 1
+Const adSaveCreateOverWrite = 2
+Const adTypeBinary = 1
+Const adTypeText = 2
+Const adReadAll = -1
+Const adReadLine = -2
 
 ' コマンド文字列の一覧
 Const cCmdEnd = "end"
@@ -61,12 +69,106 @@ Loop
 WScript.echo("実行しました")
 'スクリプトの終了
 WScript.Quit()
+'==========================================================
+
+' Excelの画面更新を停止するクラス
+' オブジェクトの生成で発動し、破壊で元に戻す
+Class CDisableScreenUpdating
+    Private m_bSave '以前の状態を保存
+    Private Sub Class_Initialize
+        'on error resume next
+        m_bSave = objMain.objExApplication.objComApplication.ScreenUpdating
+        objMain.objExApplication.objComApplication.ScreenUpdating = False
+    End Sub
+    Private Sub Class_Terminate
+        'on error resume next
+        objMain.objExApplication.objComApplication.ScreenUpdating = m_bSave
+    End Sub
+End Class
+
+' Excelの画面更新を開始するクラス
+' オブジェクトの生成で発動し、破壊で元に戻す
+Class CEnableScreenUpdating
+    Private m_bSave '以前の状態を保存
+    Private Sub Class_Initialize
+        'on error resume next
+        m_bSave = objMain.objExApplication.objComApplication.ScreenUpdating
+        objMain.objExApplication.objComApplication.ScreenUpdating = True
+    End Sub
+    Private Sub Class_Terminate
+        'on error resume next
+        objMain.objExApplication.objComApplication.ScreenUpdating = m_bSave
+    End Sub
+End Class
+
+' Excelのスクリプト動作によるイベント生成を停止するクラス
+' オブジェクトの生成で発動し、破壊で元に戻す
+Class CDisableEvents
+    Private m_bSave '以前の状態を保存
+    Private Sub Class_Initialize
+        'on error resume next
+        m_bSave = objMain.objExApplication.objComApplication.EnableEvents
+        objMain.objExApplication.objComApplication.EnableEvents = False
+    End Sub
+    Private Sub Class_Terminate
+        'on error resume next
+        objMain.objExApplication.objComApplication.EnableEvents = m_bSave
+    End Sub
+End Class
+
+' Excelのスクリプト動作によるイベント生成を開始するクラス
+' オブジェクトの生成で発動し、破壊で元に戻す
+Class CEnableEvents
+    Private m_bSave '以前の状態を保存
+    Private Sub Class_Initialize
+        'on error resume next
+        m_bSave = objMain.objExApplication.objComApplication.EnableEvents
+        objMain.objExApplication.objComApplication.EnableEvents = True
+    End Sub
+    Private Sub Class_Terminate
+        'on error resume next
+        objMain.objExApplication.objComApplication.EnableEvents = m_bSave
+    End Sub
+End Class
+
+Const xlCalculationAutomatic = -4105
+Const xlCalculationManual = -4135
+Const xlCalculationSemiautomatic = 2
+' Excelの自動計算を停止するクラス
+' オブジェクトの生成で発動し、破壊で元に戻す
+Class CDisableCalculation
+    Private m_iSave '以前の状態を保存
+    Private Sub Class_Initialize
+        'on error resume next
+        m_iSave = objMain.objExApplication.objComApplication.Calculation
+        objMain.objExApplication.objComApplication.Calculation = xlCalculationManual
+    End Sub
+    Private Sub Class_Terminate
+        'on error resume next
+        objMain.objExApplication.objComApplication.Calculation = m_iSave
+    End Sub
+End Class
+
+' Excelの自動計算を開始するクラス
+' オブジェクトの生成で発動し、破壊で元に戻す
+Class CEnableCalculation
+    Private m_iSave '以前の状態を保存
+    Private Sub Class_Initialize
+        'on error resume next
+        m_iSave = objMain.objExApplication.objComApplication.Calculation
+        objMain.objExApplication.objComApplication.Calculation = xlCalculationAutomatic
+    End Sub
+    Private Sub Class_Terminate
+        'on error resume next
+        objMain.objExApplication.objComApplication.Calculation = m_iSave
+    End Sub
+End Class
 
 ' メイン処理のクラス
 Class CMain
-    Public strWorkbookName
-    Public strSheetName
-    Public m_objExApplication
+'    Public strWorkbookName
+'    Public strSheetName
+    Private m_objExApplication
     Public objItem    ' as CItem
     Public objBalance ' as CBalance
     Public objChart   ' as CChart
@@ -116,6 +218,8 @@ Class CMain
             If objChart.OpenXlsx = True Then
                 ' アイテム所有情報バックアップ
                 objChart.MyItemsCreate
+                ' 試算表の変更がないと設定する
+                objChart.Saved = True
                 ' 試算表を閉じる
                 Set objChart = Nothing
             End If
@@ -135,7 +239,7 @@ Class CMain
         objChart.OpenXml
 
         ' アイテム所有情報があればリストアする
-        ' ToDo ###########################
+        objChart.MyItemsRead
 
         ' アイテム表.xlsxとして保存する(試算表.xmlのリンク先もアイテム表.xlsxになる)
         objItem.SaveXlsx
@@ -194,10 +298,10 @@ Class CMain
         End If
         Err.Clear
         objFileSystem.CopyFile strSrcFilename, strBakFilename, True
-        If Err.number = 0 Then
-            FileBackup = True
-        Else
+        If Err.number <> 0 Then
             FileBackup = False
+        Else
+            FileBackup = True
         End If
     End Function
 
@@ -242,16 +346,16 @@ Class CExApplication
         End If
         'Excelオブジェクトを作成
         Set m_objComApplication = WScript.CreateObject("Excel.Application")
-        If Err.number = 0 Then
-            m_Created = True
-            'ウィンドウを可視状態にする
-            m_objComApplication.Visible = True
-            Create = True   ' 戻り値:成功
-        Else
+        If Err.number <> 0 Then
             Set m_objComApplication = Nothing
             m_Created = False
             Create = False   ' 戻り値:失敗
             WScript.echo("Microsoft Excelが利用できないようです。 (COM Automation Excel.Application)")
+        Else
+            m_Created = True
+            'ウィンドウを可視状態にする
+            m_objComApplication.Visible = True
+            Create = True   ' 戻り値:成功
         End If
     End Function
 
@@ -268,13 +372,13 @@ Class CExApplication
         'Excelファイルを開く
         Dim objComBook
         Set objComBook = m_objComApplication.Workbooks.Open(pathname)
-        If Err.number = 0 Then
+        If Err.number <> 0 Then
+            OpenBook = False   ' 戻り値:失敗
+        Else
             Set obj.objExApplication = Me
             Set obj.objComWorkbook = objComBook
             obj.objComWorkbook.Saved = True   '保存済みとマークする(そのまま閉じるときに問わないように)
             OpenBook = addChild(obj) ' 戻り値:addChildの結果
-        Else
-            OpenBook = False   ' 戻り値:失敗
         End If
     End Function
 
@@ -291,12 +395,12 @@ Class CExApplication
         'Excelファイルを開く
         Dim objComBook
         Set objComBook = m_objComApplication.Workbooks.Add()
-        If Err.number = 0 Then
+        If Err.number <> 0 Then
+            NewBook = False   ' 戻り値:失敗
+        Else
             NewBook = addChild(obj) ' 戻り値:addChildの結果
             Set obj.objExApplication = Me
             Set obj.objComWorkbook = objComBook
-        Else
-            NewBook = False   ' 戻り値:失敗
         End If
     End Function
 
@@ -309,15 +413,15 @@ Class CExApplication
             For t = 0 To cRetry
                 Err.Clear
                 m_objComApplication.Quit
-                If Err.number = 0 Then
+                If Err.number <> 0 Then
+                    Quit = False   ' 戻り値:失敗
+                    ' 少し待ってみる
+                    WScript.Sleep cSleep
+                Else
                     m_Created = False
                     Set m_objComApplication = Nothing
                     Quit = True   ' 戻り値:成功
                     Exit Function
-                Else
-                    Quit = False   ' 戻り値:失敗
-                    ' 少し待ってみる
-                    WScript.Sleep cSleep
                 End If
             Next
         End If
@@ -438,12 +542,12 @@ Class CExWorkbook
         Err.Clear
         Dim objComSheet
         Set objComSheet = m_objComWorkbook.Worksheets(sheetname)
-        If Err.number = 0 Then
+        If Err.number <> 0 Then
+            GetSheet = False  ' 戻り値:失敗
+        Else
             Set obj.objExWorkbook = Me
             Set obj.objComWorksheet = objComSheet
             GetSheet = addChild(obj) '戻り値:addChildの結果
-        Else
-            GetSheet = False  ' 戻り値:失敗
         End If
     End Function
 
@@ -452,12 +556,12 @@ Class CExWorkbook
         Err.Clear
         Dim objComSheet
         Set objComSheet = m_objComWorkbook.Worksheets.Add
-        If Err.number = 0 Then
+        If Err.number <> 0 Then
+            NewSheet = Nothing  ' 戻り値:失敗
+        Else
             Set obj.objExWorkbook = Me
             Set obj.objComWorksheet = objComSheet
             NewSheet = addChild(obj) '戻り値:成功ならオブジェクト
-        Else
-            NewSheet = Nothing  ' 戻り値:失敗
         End If
     End Function
 
@@ -484,14 +588,7 @@ Class CExWorkbook
         Else
             m_objComWorkbook.SaveAs filename, 51 ' -4143=xlWorkbookDefault
         End If
-        If Err.number = 0 Then
-            SaveAs = True   ' 戻り値:成功
-            m_objComWorkbook.Saved = True   '保存済みとマークする(閉じるときに問わないように)
-            'バックアップがあれば削除
-            If objFileSystem.FileExists(backup_filename) Then
-                objFileSystem.DeleteFile backup_filename, True
-            End If
-        Else
+        If Err.number <> 0 Then
             SaveAs = False  ' 戻り値:失敗
             '失敗したが半端に作成されたファイルがあるかもなので削除する
             If objFileSystem.FileExists(filename) Then
@@ -499,6 +596,13 @@ Class CExWorkbook
             End If
             'バックアップから復元
             objFileSystem.MoveFile backup_filename, filename
+        Else
+            SaveAs = True   ' 戻り値:成功
+            m_objComWorkbook.Saved = True   '保存済みとマークする(閉じるときに問わないように)
+            'バックアップがあれば削除
+            If objFileSystem.FileExists(backup_filename) Then
+                objFileSystem.DeleteFile backup_filename, True
+            End If
         End If
     End Function
 
@@ -514,12 +618,12 @@ Class CExWorkbook
         deleteChilds
         'Excelファイルを閉じる
         m_objComWorkbook.Close
-        If Err.number = 0 Then
+        If Err.number <> 0 Then
+            CloseBook = False   ' 戻り値:失敗
+        Else
             m_bOpend = False
             m_objExApplication.BookClosed Me   '親に通知
             CloseBook = True   ' 戻り値:成功
-        Else
-            CloseBook = False   ' 戻り値:失敗
         End If
     End Function
 
@@ -612,6 +716,43 @@ Class CExWorksheet
     Public Function Cell(row, column)
         Set Cell = m_objComWorksheet.Cells(row, column)
     End Function
+
+    'row, columnで指定したセルのValueを返す
+    '失敗するとNothingを返す
+    Public Function GetCellValue(row, column)
+        on error resume next
+        Err.Clear
+        GetCellValue = m_objComWorksheet.Cells(row, column).Value
+        If Err.number <> 0 Then
+            Set GetCellValue = Nothing
+        Else
+        End If
+    End Function
+
+    'row, columnで指定したセルのValueにvalを設定する
+    '成功でTrue, 失敗でFalseを返す
+    Public Function LetCellValue(row, column, val)
+        on error resume next
+        Err.Clear
+        m_objComWorksheet.Cells(row, column).Value = val
+        If Err.number <> 0 Then
+            LetCellValue = False
+        Else
+            LetCellValue = True
+        End If
+    End Function
+
+    'row, columnで指定したセルのTextを返す
+    '失敗すると "" を返す
+    Public Function GetCellText(row, column)
+        on error resume next
+        Err.Clear
+        GetCellText = m_objComWorksheet.Cells(row, column).Text
+        If Err.number <> 0 Then
+            GetCellText = ""
+        Else
+        End If
+    End Function
 End Class
 
 ' 試算表クラス
@@ -620,22 +761,26 @@ Class CChart
     Private strQuestSheetname
     Private strNumberRangename
     Private strOwnRangename
+    Private strNameRangename
     Private m_objMain       'as CMain
     Private m_objChartBook   'as CExWorkbook
     Private m_objQuestSheet   'as CExWorksheet
     Private m_strFilename
     Private m_bOpend
+    Private m_strMyItemsFilename
 
     Private Sub Class_Initialize
         strFileBasename = "MiracleNikkiJp_chart"
         strQuestSheetname = "クエスト"
         strNumberRangename = "整理番号"
         strOwnRangename = "所有"
+        strNameRangename = "名前"
         Set m_objMain = Nothing
         Set m_objChartBook = Nothing
         Set m_objQuestSheet = Nothing
         m_strFilename = Empty
         m_bOpend = False
+        m_strMyItemsFilename = "MyItems.csv"
     End Sub
     Private Sub Class_Terminate
         Close
@@ -645,8 +790,8 @@ Class CChart
         Set objChartBook = m_objChartBook
     End Property
 
-    Public Property Get objChartSheet
-        Set objChartSheet = m_objQuestSheet
+    Public Property Get objQuestSheet
+        Set objQuestSheet = m_objQuestSheet
     End Property
 
     Public Property Get objMain
@@ -661,7 +806,21 @@ Class CChart
         strFilename = m_strFilename
     End Property
 
-    ' xml形式のアイテム表を開く
+    Public Property Get Saved
+        If m_bOpend Then
+            Saved = m_objChartBook.objComWorkbook.Saved
+        Else
+            Saved = True    ' 開いていない場合は変更なしとする
+        End If
+    End Property
+
+    Public Property Let Saved(st)
+        If m_bOpend Then
+            m_objChartBook.objComWorkbook.Saved = st
+        End If
+    End Property
+
+    ' xml形式の試算表を開く
     Public Function OpenXml
         Dim xml_filename
         ' カレントディレクトリで探す
@@ -676,7 +835,7 @@ Class CChart
         m_strFilename = xml_filename
     End Function
 
-    ' xlsx形式のアイテム表を開く
+    ' xlsx形式の試算表を開く
     Public Function OpenXlsx
         Dim xlsx_filename
         ' カレントディレクトリで探す
@@ -741,22 +900,46 @@ Class CChart
 
     'アイテム所有情報のバックアップ
     Public Function MyItemsCreate
+        Dim objDisableScreenUpdating
+        Dim objDisableEvents
+        Dim objDisableCalculation
+        Set objDisableScreenUpdating = New CDisableScreenUpdating
+        Set objDisableEvents = New CDisableEvents
+        Set objDisableCalculation = New CDisableCalculation
         'on error resume next
         Err.Clear
         If m_bOpend Then
+            Dim objMyItems      'アイテム所有情報
+            Set objMyItems = New CNumbers
+            objMyItems.strFilename = m_strMyItemsFilename
+            objMyItems.Create
             Dim objNumberRange  '名前付き範囲"整理番号"
             Set objNumberRange = m_objQuestSheet.objComWorksheet.Range(strNumberRangename)
             Dim iNumberColumn   '整理番号の列番号
             iNumberColumn = objNumberRange.Cells(1).Column
             Dim objOwnRange '名前付き範囲"所有"
             Set objOwnRange = m_objQuestSheet.objComWorksheet.Range(strOwnRangename)
+            Dim bAppendError    'アイテム所有情報Append失敗があればTrue
+            bAppendError = False
             Dim objRange1   '名前付き範囲"所有"の1つのセル
             For Each objRange1 In objOwnRange.Cells '所有の各セルについて
-                If objRange1.Value = "◯" Then   '◯なら所有として
+                If objRange1.Value <> "◯" Then   '◯なら所有として
+                    '◯でないなら何もしない
+                    'on error resume nextでは次のステートメントを実行するのでここで吸収する
+                Else
                     Dim iNumber
                     iNumber = m_objQuestSheet.Cell(objRange1.Row, iNumberColumn).Value
+                    If objMyItems.Append(iNumber) = False Then
+                        bAppendError = True
+                        '整理番号をアイテム所有情報の集合に追加できなかった
+                        '逐一エラーメッセージを表示すると数が多いので、しない
+                    End If
                 End If
             Next
+            If bAppendError Then
+                WScript.echo("アイテム所有情報のバックアップで失敗がありました")
+            End If
+            objMyItems.Close
             MyItemsCreate = True
         Else
             MyItemsCreate = False
@@ -765,11 +948,61 @@ Class CChart
 
     'アイテム所有情報のリストア
     Public Function MyItemsRead
+        Dim objDisableScreenUpdating
+        Dim objDisableEvents
+        Dim objDisableCalculation
+        Set objDisableScreenUpdating = New CDisableScreenUpdating
+        Set objDisableEvents = New CDisableEvents
+        Set objDisableCalculation = New CDisableCalculation
         'on error resume next
         Err.Clear
-        If m_bOpend Then
+        If m_bOpend Then    '試算表オープン済
+            Dim objNumberRange  '名前付き範囲"整理番号"
+            Dim objOwnRange '名前付き範囲"所有"
+            Dim objNameRange '名前付き範囲"名前"
+            Set objNumberRange = m_objQuestSheet.objComWorksheet.Range(strNumberRangename)
+            Set objOwnRange = m_objQuestSheet.objComWorksheet.Range(strOwnRangename)
+            Set objNameRange = m_objQuestSheet.objComWorksheet.Range(strNameRangename)
+            Dim iOwnColumn   '所有の列番号
+            Dim iNameColumn   '名前の列番号
+            iOwnColumn = objOwnRange.Cells(1).Column
+            iNameColumn = objNameRange.Cells(1).Column
+
+            Dim bOpenFail
+            Dim objMyItems      'アイテム所有情報
+            Set objMyItems = New CNumbers
+            objMyItems.strFilename = m_strMyItemsFilename
+            objMyItems.Open
+            If Err.number <> 0 Then
+                bOpenFail = True    'アイテム所有情報 オープン失敗
+            Else
+                bOpenFail = False   'アイテム所有情報 オープン成功
+            End If
+            Dim objRange1   '名前付き範囲"整理番号"の1つのセル
+            For Each objRange1 In objNumberRange.Cells '整理番号の各セルについて
+                If bOpenFail Then
+                    'オープン失敗  (アイテム所有情報がないなら全て所有とする)
+                    Dim strNameCell
+                    strNameCell = m_objQuestSheet.GetCellText(objRange1.Row, iNameColumn)
+                    If (strNameCell = "") Or (strNameCell = "－") Then
+                    Else
+                        If Not m_objQuestSheet.LetCellValue(objRange1.Row, iOwnColumn, "◯") Then
+                        Else
+                        End If
+                    End If
+                ElseIf objMyItems.Find(objRange1.Value) Then
+                    '整理番号がアイテム所有情報で見つかったら
+                    'on error resume nextでは次のステートメントを実行するのでここで吸収する
+                    'エラーなら所有しているとする
+                    m_objQuestSheet.Cell(objRange1.Row, iOwnColumn).Value = "◯"
+                Else
+                    m_objQuestSheet.Cell(objRange1.Row, iOwnColumn).Value = ""
+                End If
+            Next
+            objMyItems.Close
+            MyItemsRead = True
         Else
-            MyItemsCreate = False
+            MyItemsRead = False
         End If
     End Function
 End Class
@@ -807,6 +1040,20 @@ Class CBalance
 
     Public Property Get strFilename
         strFilename = m_strFilename
+    End Property
+
+    Public Property Get Saved
+        If m_bOpend Then
+            Saved = m_objBalanceBook.objComWorkbook.Saved
+        Else
+            Saved = True    ' 開いていない場合は変更なしとする
+        End If
+    End Property
+
+    Public Property Let Saved(st)
+        If m_bOpend Then
+            m_objBalanceBook.objComWorkbook.Saved = st
+        End If
     End Property
 
     ' csv形式のバランスを開く
@@ -919,6 +1166,20 @@ Class CItem
         strFilename = m_strFilename
     End Property
 
+    Public Property Get Saved
+        If m_bOpend Then
+            Saved = m_objItemBook.objComWorkbook.Saved
+        Else
+            Saved = True    ' 開いていない場合は変更なしとする
+        End If
+    End Property
+
+    Public Property Let Saved(st)
+        If m_bOpend Then
+            m_objItemBook.objComWorkbook.Saved = st
+        End If
+    End Property
+
     ' csv形式のアイテム表を開く
     Public Function OpenCsv
         Dim csv_filename
@@ -1009,6 +1270,139 @@ Class CCurrentDirectory
     Public Default Property Get strCurrentDirectory
         strCurrentDirectory = m_strCurrentDirectory
     End Property
+End Class
+
+' 数値の集合クラス
+Class CNumbers
+    Private m_strFilename
+    Private m_bUsable
+    Private m_bSaved
+    Private m_objStream
+    Private m_strNumberLines
+
+    Private Sub Class_Initialize
+        m_strFilename = Empty
+        m_bUsable = False
+        m_bSaved = True
+        Set m_objStream = Nothing
+        m_strNumberLines = Empty
+    End Sub
+    Private Sub Class_Terminate
+        Close
+    End Sub
+
+    Public Property Get strFilename
+        strFilename = m_strFilename
+    End Property
+
+    Public Property Let strFilename(str)
+        m_strFilename = str
+    End Property
+
+    Public Property Get Saved
+        Saved = m_bSaved
+    End Property
+
+    Public Property Let Saved(st)
+        m_bSaved = st
+    End Property
+
+    '空の集合を作成する
+    Public Function Create
+        Create = False
+        'データがあるなら、まず閉じる
+        If m_bUsable Then
+            Close
+        End If
+        'on error resume next
+        Err.Clear
+        set m_objStream = CreateObject("ADODB.Stream")
+        If Err.number <> 0 Then
+            m_bUsable = False
+            m_bSaved = True
+            m_strNumberLines = Empty
+            Create = False
+        Else
+            m_objStream.Type = adTypeText  ' text
+            m_objStream.Charset = "utf-8"
+            m_objStream.Open
+            m_bSaved = True
+            m_strNumberLines = "所有アイテムの整理番号" & VbCrLf
+            m_bUsable = True
+            Create = True
+        End If
+    End Function
+
+    'プロパティstrFilenameでファイルから読み込む
+    Public Function Open
+        Create
+        on error resume next
+        Err.Clear
+        Dim filename
+        filename = objFileSystem.GetAbsolutePathName(m_strFilename) 'フルパスにする
+        m_objStream.Position = 0 '読んだデータの書き込み開始位置はストリームの先頭
+        m_objStream.SetEOS '余分なデータがあれば削除する
+        m_objStream.LoadFromFile filename
+        m_strNumberLines = m_objStream.ReadText(adReadAll)
+        If Err.number <> 0 Then
+            Open = False '戻り値:失敗
+        Else
+            Open = True '戻り値:成功
+        End If
+        m_bSaved = True
+    End Function
+
+    'ファイル保存
+    Private Function Save
+        If m_bUsable Then
+            'on error resume next
+            Err.Clear
+            m_objStream.Position = 0 'データをストリームに書き込む開始位置はストリームの先頭
+            m_objStream.WriteText m_strNumberLines, adWriteChar   '最後に改行を付けない
+            m_objStream.SetEOS '余分なデータがあれば削除する
+            Dim filename
+            filename = objFileSystem.GetAbsolutePathName(m_strFilename) 'フルパスにする
+            m_objStream.SaveToFile filename, adSaveCreateOverWrite   '上書き
+            If Err.number <> 0 Then
+                Save = False '戻り値:失敗
+                WScript.echo("ファイルの保存でエラーがありました " & m_strFilename)
+            Else
+                m_bSaved = True
+                Save = True '戻り値:成功
+            End If
+        Else
+            Save = False '戻り値:失敗
+        End If
+    End Function
+
+    '集合を破棄する。プロパティSavedがFalseなら保存してから破棄する。
+    '保存に用いるファイル名はプロパティstrFilename
+    Public Function Close
+        If m_bUsable Then
+            If Not m_bSaved Then
+                Save 'ファイル保存
+            End If
+            'ストリームを閉じる
+            m_objStream.Close
+            m_bUsable = False
+        End If
+        Set m_objStream = Nothing
+    End Function
+
+    '数値を集合に追加する。成功でTrueを返す。プロパティSavedはFalseになる
+    Public Function Append(number)
+        m_strNumberLines = m_strNumberLines & CStr(number) & VbCrLf
+        m_bSaved = False
+        Append = True   '戻り値:成功
+    End Function
+
+    Public Function Find(number)    '数値が集合に含まれているならTrueを返す
+        If InStr(1, m_strNumberLines, VbCrLf & CStr(number) & VbCrLf, vbTextCompare) = 0 Then
+            Find = False    '戻り値:含まれていない
+        Else
+            Find = True     '戻り値:含まれている
+        End If
+    End Function
 End Class
 
 '日付を示すYYYYMMDD-hhmmss形式の15文字の文字列を作成する
