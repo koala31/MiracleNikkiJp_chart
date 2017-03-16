@@ -28,10 +28,13 @@ Const cCmdRun = "run"
 Const cCmdDbgPoll = "debug_poll"
 
 ' 共通オブジェクト
+Dim objWScriptShell
+Set objWScriptShell = CreateObject("WScript.Shell")
 Dim objFileSystem
 Set objFileSystem = CreateObject("Scripting.FileSystemObject")
 Dim objCurrentDirectory
 Set objCurrentDirectory = New CCurrentDirectory
+objCurrentDirectory.ChangeDirectory(New CScriptDirectory)
 
 ' 引数処理
 Dim strCommand ' コマンド識別文字列
@@ -426,8 +429,6 @@ Class CMain
     'コーデ試算起動ショートカット作成
     Public Function CreateRunShortCut
         CreateRunShortCut = False
-        Dim objWScriptShell
-        Set objWScriptShell = CreateObject("WScript.Shell")
         Dim strRunShortCutFilename
         strRunShortCutFilename = objFileSystem.GetAbsolutePathName("ミラクルニキのコーデ試算表.lnk")
         Dim objRunShortCut
@@ -1532,17 +1533,40 @@ Class CInternetFile
 
 End Class
 
+' Script Directory
+Class CScriptDirectory
+    Private m_strScriptDirectory
+
+    Private Sub Class_Initialize
+        m_strScriptDirectory = objFileSystem.getParentFolderName(WScript.ScriptFullName)
+    End Sub
+
+    Public Default Property Get strScriptDirectory
+        strScriptDirectory = m_strScriptDirectory
+    End Property
+End Class
+
 ' Current Directory
 Class CCurrentDirectory
     Private m_strCurrentDirectory
 
     Private Sub Class_Initialize
-        m_strCurrentDirectory = objFileSystem.getParentFolderName(WScript.ScriptFullName)
+        m_strCurrentDirectory = objWScriptShell.CurrentDirectory
     End Sub
 
     Public Default Property Get strCurrentDirectory
         strCurrentDirectory = m_strCurrentDirectory
     End Property
+
+    Public Property Let strCurrentDirectory(strDir)
+        ChangeDirectory(strDir)
+    End Property
+
+    Public Function ChangeDirectory(strDir)
+        on error resume next
+        objWScriptShell.CurrentDirectory = strDir
+        m_strCurrentDirectory = objWScriptShell.CurrentDirectory
+    End Function
 End Class
 
 ' 数値の集合クラス
