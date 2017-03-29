@@ -24,6 +24,7 @@ Const adReadLine = -2
 ' コマンド文字列の一覧
 Const cCmdEnd = "end"
 Const cCmdSetup = "setup"
+Const cCmdRelease = "release"
 Const cCmdRun = "run"
 Const cCmdDbgPoll = "debug_poll"
 
@@ -64,12 +65,12 @@ Set objMain = New CMain
 
 'メインループ
 Do While strCommand <> cCmdEnd
+    Dim btn
     Dim bCmdStatus
     bCmdStatus = False
     Select Case strCommand
         Case cCmdSetup
             strCommand = cCmdEnd    '基本的に次は終了
-            Dim btn
             'セットアップ開始メッセージ
             btn = MsgBox(cAppName & "のセットアップを開始します。" & VbCrLf & _
                 "セットアップはしばらく時間がかかります。終了時には再びお知らせします。" & VbCrLf & _
@@ -95,9 +96,51 @@ Do While strCommand <> cCmdEnd
                         vbOKOnly + vbInformation, cMsgBoxTitle)
                 End If
             End If
+        Case cCmdRelease
+            strCommand = cCmdEnd    '基本的に次は終了
+            'リリース開始のメッセージ
+            btn = MsgBox(cAppName & "のリリース処理を開始します。" & VbCrLf & _
+                "この処理はしばらく時間がかかります。終了時には再びお知らせします。" & VbCrLf & _
+                "リリース用のファイルはサブディレクトリに作成します。" & VbCrLf & _
+                "試算表、バランス、アイテム表ともに閉じた状態で開始することが前提です。" & VbCrLf & _
+                "準備が良ければ処理を続行します。", _
+                vbOKCancel + vbInformation + vbDefaultButton2, cMsgBoxTitle)
+            If btn <> vbOK Then 'OK以外の選択なら終了
+            Else
+                ' コマンド実行。次に実行するコマンドは戻り値で指定される
+                strCommand = objMain.CmdRelease(bCmdStatus)
+                If Not bCmdStatus Then
+                    'セットアップ異常終了メッセージ
+                    btn = MsgBox(cAppName & "のリリース処理は終了しましたが、途中でエラーがありました。" & VbCrLf & _
+                        "再びリリースを試みますか?", _
+                        vbYesNo + vbQuestion + vbDefaultButton2, cMsgBoxTitle)
+                    If btn <> vbYes Then
+                    Else
+                        strCommand = cCmdRelease
+                    End If
+                Else
+                    'リリース処理正常終了メッセージ
+                    btn = MsgBox(cAppName & "のリリース処理が正常に終了しました。" & VbCrLf & _
+                        "release_で始まるサブディレクトリをご確認ください。", _
+                        vbOKOnly + vbInformation, cMsgBoxTitle)
+                End If
+            End If
         Case cCmdRun
+            strCommand = cCmdEnd    'エラー時に次は終了
             ' コマンド実行。次に実行するコマンドは戻り値で指定される
-            strCommand = objMain.CmdRun
+            strCommand = objMain.CmdRun(bCmdStatus)
+            If Not bCmdStatus Then
+                '起動異常終了メッセージ
+                btn = MsgBox(cAppName & "を開きましたが、途中でエラーがありました。" & VbCrLf & _
+                    "再び試みますか?", _
+                    vbYesNo + vbQuestion + vbDefaultButton2, cMsgBoxTitle)
+                If btn <> vbYes Then
+                Else
+                    strCommand = cCmdRun
+                End If
+            Else
+                '起動正常
+            End If
         Case cCmdDbgPoll
             If objMain.Poll = False Then   ' メイン処理のポーリングを実行
                 strCommand = cCmdEnd   ' 続いて終了
@@ -376,8 +419,111 @@ Class CMain
         status = True
     End Function
 
+    ' releaseコマンド実行。次のコマンドを戻り値で指定する
+    ' status参照引数: 成功でTrue設定される。失敗では呼び出し前の値を維持する
+    Public Function CmdRelease(byRef status)
+        Dim obj_Item
+        Dim obj_Balance
+        Dim obj_Chart
+        ' 次に実行するコマンドを戻り値で指定
+        CmdRelease = cCmdEnd
+
+        ' アイテム表オブジェクトの生成
+        Set obj_Item = New CItem
+        Set obj_Item.objMain = Me
+        ' アイテム表.xlsxを開く
+        If obj_Item.OpenXlsx = False Then
+            'アイテム表.xlsxが開けないならエラーリターン
+            Exit Function
+        Else
+            Err.Clear
+            ' アイテム表のアイテムを実質0個にする
+            obj_Item.AllClear
+            ' 保存済みとマークする
+            obj_Item.MarkAsSaved
+            If Err.number <> 0 Then
+                Exit Function
+            End If
+        End If
+        
+        ' バランスオブジェクトの生成
+        Set obj_Balance = New CBalance
+        Set obj_Balance.objMain = Me
+        ' バランス.csvを開く
+        If obj_Balance.OpenCsv = False Then
+            ' バランス.csvが開けないならエラーリターン
+            Exit Function
+        Else
+        End If
+
+        ' 試算表オブジェクトの生成
+        Set obj_Chart = New CChart
+        Set obj_Chart.objMain = Me
+        ' 試算表.xlsxを開く
+        If obj_Chart.OpenXlsx = False Then
+            ' 試算表.xlsxが開けないならエラーリターン
+            Exit Function
+        Else
+        End If
+
+        ' 保存先ディレクトリを作成
+        Dim strRelDirname
+        strRelDirname = CreateReleaseDirectory()
+        If IsNull(strRelDirname) Then
+            ' ディレクトリを作成できないならエラーリターン
+            Exit Function
+        Else
+        End If
+
+        ' アイテム表を保存
+        If Not obj_Item.SaveCsvTo(strRelDirname) Then
+            ' 保存できないならエラーリターン
+            Exit Function
+        Else
+            ' アイテム表を閉じた時に自動的に削除する指定
+            obj_Item.bDeleteOnClose = True
+        End If
+        ' バランスを保存
+        If Not obj_Balance.SaveCsvTo(strRelDirname) Then
+            ' 保存できないならエラーリターン
+            Exit Function
+        Else
+        End If
+        ' 試算表をXMLスプレッドシートで保存(新規ディレクトリなので重複しない)
+        If Not obj_Chart.SaveXmlTo(strRelDirname) Then
+            ' 保存できないならエラーリターン
+            Exit Function
+        Else
+        End If
+
+        ' 試算表を閉じる
+        If Not obj_Chart.Close Then
+            Exit Function
+        End If
+        ' バランスを閉じる
+        If Not obj_Balance.Close Then
+            Exit Function
+        End If
+        ' アイテム表を閉じる
+        If Not obj_Item.Close Then
+            Exit Function
+        End If
+        'LICENSEをコピーする
+        objFileSystem.CopyFile "LICENSE", strRelDirname & "\"
+        'MiracleNikkiJp_script.utf8をコピーする
+        objFileSystem.CopyFile "MiracleNikkiJp_script.utf8", strRelDirname & "\"
+        'README.mdをコピーする
+        objFileSystem.CopyFile "README.md", strRelDirname & "\"
+        'Setup.vbsをコピーする
+        objFileSystem.CopyFile "Setup.vbs", strRelDirname & "\"
+
+        'statusの更新
+        status = True
+    End Function
+
     ' runコマンド実行。次のコマンドを戻り値で指定する
-    Public Function CmdRun
+    ' status参照引数: 成功でTrue設定される。失敗では呼び出し前の値を維持する
+    Public Function CmdRun(byRef status)
         ' アイテム表オブジェクトの生成
         Set objItem = New CItem
         Set objItem.objMain = Me
@@ -395,6 +541,9 @@ Class CMain
         objChart.OpenXlsx
         ' 次に実行するコマンドを戻り値で指定
         CmdRun = cCmdDbgPoll
+
+        'statusの更新
+        status = True
     End Function
 
     '指定のファイルからバックアップファイルを作成する
@@ -439,6 +588,7 @@ Class CMain
         objRunShortCut.Description = "ミラクルニキのコーデ試算表を起動します。"
         objRunShortCut.IconLocation = "%SystemRoot%\system32\SHELL32.dll, 1"
         objRunShortCut.Save
+        CreateRunShortCut = True
     End Function
 
     ' ポーリング
@@ -789,6 +939,11 @@ Class CExWorkbook
         End If
     End Function
 
+    ' 保存済みとマークする
+    Public Sub MarkAsSaved
+        m_objComWorkbook.Saved = True
+    End Sub
+
     ' ポーリング
     ' 戻り値 ポーリング継続可=True, ポーリング中止要求=False
     Private Function Poll
@@ -1023,14 +1178,14 @@ Class CChart
         Set m_objChartBook = New CExWorkbook
         If m_objMain.objExApplication.OpenBook(filename, m_objChartBook) Then
             Set m_objQuestSheet = New CExWorksheet
-            If m_objChartBook.GetSheet(strQuestSheetname, m_objQuestSheet) Then
-                m_bOpend = True
-                open = True   ' 戻り値:成功
-            Else
+            If Not m_objChartBook.GetSheet(strQuestSheetname, m_objQuestSheet) Then
                 WScript.echo("ワークシートにアクセスできませんでした")
                 Set m_objQuestSheet = Nothing
                 Set m_objChartBook = Nothing
                 open = False   ' 戻り値:失敗
+            Else
+                m_bOpend = True
+                open = True   ' 戻り値:成功
             End If
         Else
             WScript.echo("ファイルを開けませんでした " & filename)
@@ -1045,19 +1200,48 @@ Class CChart
             ' カレントディレクトリに保存する
             filename = objFileSystem.GetAbsolutePathName(strFileBasename & ".xlsx")
             SaveXlsx = m_objChartBook.SaveAs(filename) ' 戻り値:SaveAsの結果による
+            m_strFilename = filename
         Else
             SaveXlsx = False ' 戻り値:失敗
         End If
     End Function
 
+    Public Function SaveXmlTo(dirname)
+        If Not (m_objChartBook Is Nothing) Then
+            Dim filename
+            ' 指定ディレクトリに保存する
+            filename = objFileSystem.GetAbsolutePathName(dirname & "\" & strFileBasename & ".xml")
+            SaveXmlTo = m_objChartBook.SaveAs(filename) ' 戻り値:SaveAsの結果による
+            m_strFilename = filename
+        Else
+            SaveXmlTo = False ' 戻り値:失敗
+        End If
+    End Function
+
     Public Function Close
+        Close = False   ' 戻り値を失敗でプリセットしておく
         on error resume next
         Err.Clear
         If (Not (m_objChartBook Is Nothing)) And m_bOpend Then
             m_objChartBook.CloseBook
+            m_bOpend = False
+            ' 閉じたファイルが .xml 形式なら
+            If objFileSystem.GetExtensionName(m_strFilename) <> "xml" Then
+                ' xml以外
+                Close = True   ' 戻り値:成功
+            Else
+                ' MiracleNikkiJp_chart.xmlの整形.vbs を実行する。
+                If Not XmlFileForming() Then
+                    ' 失敗
+                Else
+                    Close = True   ' 戻り値:成功
+                End If
+            End If
+        Else
+            ' 開いていない
+            Close = True   ' 戻り値:成功
+            m_bOpend = False    ' 念のため開いていないとマークする
         End If
-        m_bOpend = False
-        Close = True   ' 戻り値:成功
     End Function
 
     'アイテム所有情報のバックアップ
@@ -1167,6 +1351,179 @@ Class CChart
             MyItemsRead = False
         End If
     End Function
+
+    ' 保存済みとマークする
+    Public Sub MarkAsSaved
+        on error resume next
+        m_objChartBook.MarkAsSaved
+    End Sub
+
+    ' MiracleNikkiJp_chart.xmlの整形.vbs を実行する。
+    Private Function XmlFileForming
+        on error resume next
+        XmlFileForming = False  ' 戻り値を失敗でプリセットしておく
+        If m_bOpend Then
+            Exit Function   ' 開いているなら処理できない
+        End If
+        If objFileSystem.GetExtensionName(m_strFilename) <> "xml" Then
+            Exit Function   ' xml以外なら処理できない
+        End If
+        ' Open source stream
+        Dim src_stream  ' 変換前のストリーム
+        set src_stream = CreateObject("ADODB.Stream")
+        src_stream.Type = adTypeText
+        src_stream.Charset = "utf-8"
+        src_stream.Open
+        src_stream.LoadFromFile m_strFilename
+        ' Open destination stream
+        Dim dst_stream  ' 変換後のストリーム
+        set dst_stream = CreateObject("ADODB.Stream")
+        dst_stream.Type = adTypeText
+        dst_stream.Charset = "utf-8"
+        dst_stream.Open
+        ' message
+        MsgBox objFileSystem.GetFileName(m_strFilename) & _
+                "の整形を開始します。" & VbCrLf & _
+                "しばらくかかると思います。終了したらお知らせします。", _
+                vbOKOnly + vbInformation, cMsgBoxTitle
+        Dim line_str
+        Dim prev_line_str
+        Dim row_line_str
+        Dim supbook_line_str
+        line_str = ""
+        prev_line_str = ""
+        row_line_str = ""
+        supbook_line_str = ""
+        Do Until src_stream.EOS
+          line_str = src_stream.ReadText(adReadLine)
+          ' Process to be deleted
+          if InStr(line_str, "<Author>") > 0 then line_str = ""
+          if InStr(line_str, "<LastAuthor>") > 0 then line_str = ""
+          if InStr(line_str, "<Created>") > 0 then line_str = ""
+          if InStr(line_str, "<LastSaved>") > 0 then line_str = ""
+  
+          ' <SupBook> detect
+          if InStr(line_str, "<SupBook>") > 0 then
+            supbook_line_str = line_str
+          end if
+          ' <SupBook> mode
+          if Len(supbook_line_str) > 0 then
+            ' </SupBook>
+            if InStr(line_str, "</SupBook>") > 0 then
+              supbook_line_str = ""
+            end if
+            line_str = ""
+          end if
+  
+          ' Concatenate if there is consolidation specification from the previous line
+          if Len(prev_line_str) > 0 then
+            line_str = prev_line_str & " " & LTrim(line_str)
+            prev_line_str = ""
+          end if
+  
+          ' Row tag detect
+          Dim row_str_pos
+          row_str_pos = InStr(line_str, "<Row ") ' "<Row " position
+          if row_str_pos > 0 then
+            ' Error when detecting nested Row
+            if Len(row_line_str) > 0 then
+              MsgBox objFileSystem.GetFileName(m_strFilename) & _
+                "の内容に論理エラーがありました。" & VbCrLf & _
+                "<Row>が入れ子になっています。", _
+                vbOKOnly + vbExclamation, cMsgBoxTitle
+              Exit Function ' XMLエラー <Row>が入れ子になっている
+            end if
+            ' Store Row tag and later in row_line_str
+            row_line_str = Mid(line_str, row_str_pos)
+            line_str = Left(line_str, row_str_pos - 1)
+            ' If there is a valid description before the Row tag, it will be outputted as one line, otherwise it will be left behind the Row tag (if it is blank)
+            if Len(Trim(line_str)) > 0 then
+              dst_stream.WriteText line_str, 1
+            else
+              row_line_str = line_str & row_line_str
+            end if
+          end if
+  
+          ' Row-mode
+          if Len(row_line_str) > 0 then
+            row_line_str = row_line_str & Trim(line_str) ' Continue to the previous line
+            if Right(row_line_str, 1) <> ">" then ' Preparation for connection when tag is separated into multiple lines
+              row_line_str = row_line_str & " "
+            end if
+            ' <Row ... />
+            row_str_pos = InStr(row_line_str, "/>")
+            if row_str_pos > 0 then
+              'WScript.echo(InStr(Mid(row_line_str, InStr(row_line_str, "<Row ") + 5, row_str_pos - InStr(row_line_str, "<Row ") - 5), "<"))
+              'Exit Function
+              if InStr(Mid(row_line_str, InStr(row_line_str, "<Row ") + 5, row_str_pos - InStr(row_line_str, "<Row ") - 5), "<") = 0 then
+                ' Return up to /> to line_str and concatenate after /> to the next line
+                line_str = Left(row_line_str, row_str_pos - 1 + 2)
+                row_line_str = ""
+                prev_line_str = Mid(row_line_str, row_str_pos + 2)
+              end if
+            end if
+            ' </Row>
+            row_str_pos = InStr(row_line_str, "</Row>")
+            if row_str_pos > 0 then
+              ' </ Row> tag is returned to line_str, and after the </ Row> tag is concatenated to the next line
+              line_str = Left(row_line_str, row_str_pos - 1 + 6)
+              prev_line_str = Mid(row_line_str, row_str_pos + 6)
+              row_line_str = ""
+            end if
+          end if
+  
+          ' normal-mode
+          Dim del_str_bgn
+          Dim del_str_end
+          if Len(row_line_str) <= 0 then
+            if Right(RTrim(line_str), 1) = ">" then
+              ' link update for items
+              line_str = Replace(line_str, "MiracleNikkiJp_items.csv!", "'[MiracleNikkiJp_items.csv]MiracleNikkiJp_items'!")
+              ' link update for balance
+              line_str = Replace(line_str, "MiracleNikkiJp_balance.csv!", "'[MiracleNikkiJp_balance.csv]MiracleNikkiJp_balance'!")
+              ' path remove
+              Do
+                del_str_end = InStr(line_str, "\[")
+                if del_str_end > 0 then
+                  del_str_bgn = InStrRev(Left(line_str, del_str_end), "'")
+                  line_str = RTrim(Left(line_str, del_str_bgn)) & Mid(line_str, del_str_end + 1)
+                end if
+              Loop While del_str_end > 0
+              ' delete ss:Author="..."
+              Do
+                del_str_bgn = InStr(line_str, "ss:Author")
+                if del_str_bgn > 0 then
+                  del_str_end = InStr(InStr(del_str_bgn + 9, line_str, """") + 1, line_str, """")
+                  line_str = RTrim(Left(line_str, del_str_bgn - 1)) & Mid(line_str, del_str_end + 1)
+                end if
+              Loop While del_str_bgn > 0
+              ' delete <PhoneticText...</PhoneticText>
+              Do
+                del_str_bgn = InStr(line_str, "<PhoneticText")
+                if del_str_bgn > 0 then
+                  del_str_end = InStr(del_str_bgn, line_str, "</PhoneticText>")
+                  line_str = RTrim(Left(line_str, del_str_bgn - 1)) & Mid(line_str, del_str_end + 15)
+                end if
+              Loop While del_str_bgn > 0
+              ' wrie to stream
+              dst_stream.WriteText line_str, adWriteLine    ' adWriteLine:sring + CRLF
+            else
+              prev_line_str = RTrim(line_str)
+            end if
+          end if
+        Loop
+        ' Close source stream
+        src_stream.Close
+        ' Overwrite with utf8 code with BOM
+        dst_stream.SaveToFile m_strFilename, adSaveCreateOverWrite
+        ' Close destination stream
+        dst_stream.Close
+        If Err.number <> 0 Then
+        Else
+            XmlFileForming = True   ' 戻り値:成功
+        End If
+    End Function
+
 End Class
 
 ' バランスクラス
@@ -1277,36 +1634,135 @@ Class CBalance
             ' カレントディレクトリに保存する
             filename = objFileSystem.GetAbsolutePathName(strFileBasename & ".xlsx")
             SaveXlsx = m_objBalanceBook.SaveAs(filename) ' 戻り値:SaveAsの結果による
+            m_strFilename = filename
         Else
             SaveXlsx = False ' 戻り値:失敗
         End If
     End Function
 
+    Public Function SaveCsvTo(dirname)
+        If Not (m_objBalanceBook Is Nothing) Then
+            Dim filename
+            ' 指定ディレクトリに保存する
+            filename = objFileSystem.GetAbsolutePathName(dirname & "\" & strFileBasename & ".csv")
+            SaveCsvTo = m_objBalanceBook.SaveAs(filename) ' 戻り値:SaveAsの結果による
+            m_strFilename = filename
+        Else
+            SaveCsvTo = False ' 戻り値:失敗
+        End If
+    End Function
+
     Public Function Close
+        Close = False   ' 戻り値を失敗でプリセットしておく
         on error resume next
         Err.Clear
         If (Not (m_objBalanceBook Is Nothing)) And m_bOpend Then
             m_objBalanceBook.CloseBook
+            m_bOpend = False
+            ' 閉じたファイルが .csv 形式なら
+            If objFileSystem.GetExtensionName(m_strFilename) <> "csv" Then
+                ' csv以外
+                Close = True   ' 戻り値:成功
+            Else
+                ' MiracleNikkiJp_balance.csv をシェアする準備.vbs を実行する。
+                If Not CsvFileForming() Then
+                    ' 失敗
+                Else
+                    Close = True   ' 戻り値:成功
+                End If
+            End If
+        Else
+            ' 開いていない
+            Close = True   ' 戻り値:成功
+            m_bOpend = False    ' 念のため開いていないとマークする
         End If
-        m_bOpend = False
-        Close = True   ' 戻り値:成功
+    End Function
+
+    ' 保存済みとマークする
+    Public Sub MarkAsSaved
+        on error resume next
+        m_objBalanceBook.MarkAsSaved
+    End Sub
+
+    ' MiracleNikkiJp_balance.csv をシェアする準備.vbs 相当を実行する。
+    Private Function CsvFileForming
+        on error resume next
+        CsvFileForming = False  ' 戻り値を失敗でプリセットしておく
+        If m_bOpend Then
+            Exit Function   ' 開いているなら処理できない
+        End If
+        If objFileSystem.GetExtensionName(m_strFilename) <> "csv" Then
+            Exit Function   ' csv以外なら処理できない
+        End If
+        ' Open source stream
+        Dim src_stream  ' 変換前のストリーム
+        set src_stream = CreateObject("ADODB.Stream")
+        ' Check charset
+        src_stream.Type = adTypeBinary
+        src_stream.Open
+        src_stream.LoadFromFile m_strFilename
+        Dim ch  ' 先頭文字
+        ch = src_stream.Read(1)
+        If Ascb(ch) = &hEF Then
+            ' already utf-8
+            src_stream.Close
+            ' MiracleNikkiJp_balance.csvのシェアの準備は既にできている
+            CsvFileForming = True
+            Exit Function
+        End If
+        ' 文字列をutf-8に、タブをカンマに変換する
+
+        ' rewind and text mode
+        src_stream.Position = 0
+        src_stream.Type = adTypeText
+        src_stream.Charset = "shift_jis"
+        ' Open destination stream
+        Dim dst_stream  ' 変換後を保持するストリーム
+        set dst_stream = CreateObject("ADODB.Stream")
+        dst_stream.Type = adTypeText
+        dst_stream.Charset = "utf-8"
+        dst_stream.Open
+        ' read whole
+        Dim src_str ' ストリームから読み出した内容を保持する
+        src_str = src_stream.ReadText(adReadAll)
+        ' replace tab to ,
+        src_str = Replace(src_str, "	", ",")
+        ' write to stream
+        dst_stream.WriteText src_str, 0
+        ' Close source stream
+        src_stream.Close
+        ' Overwrite with utf8 code with BOM
+        dst_stream.SaveToFile m_strFilename, adSaveCreateOverWrite  '上書き
+        ' Close destination stream
+        dst_stream.Close
+        ' finish
+        If Err.number <> 0 Then
+        Else
+            CsvFileForming = True
+        End If
     End Function
 End Class
 
 ' アイテム表クラス
 Class CItem
     Private m_strFileBasename
+    Private m_strItemSheetname
     Private m_objMain       'as CMain
     Private m_objItemBook   'as CExWorkbook
+    Private m_objItemSheet   'as CExWorksheet
     Private m_strFilename
     Private m_bOpend
+    Private m_bDeleteOnClose '閉じたらファイルを削除する指定
 
     Private Sub Class_Initialize
         m_strFileBasename = "MiracleNikkiJp_items"
+        m_strItemSheetname = "MiracleNikkiJp_items"
         Set m_objMain = Nothing
         Set m_objItemBook = Nothing
+        Set m_objItemSheet = Nothing
         m_strFilename = Empty
         m_bOpend = False
+        m_bDeleteOnClose = False
     End Sub
     Private Sub Class_Terminate
         Close
@@ -1314,6 +1770,10 @@ Class CItem
 
     Public Property Get objItemBook
         Set objItemBook = m_objItemBook
+    End Property
+
+    Public Property Get objItemSheet
+        Set objItemSheet = m_objItemSheet
     End Property
 
     Public Property Get objMain
@@ -1346,7 +1806,21 @@ Class CItem
         End If
     End Property
 
-    ' csv形式のアイテム表を探す
+    Public Property Get bDeleteOnClose
+        bDeleteOnClose = m_bDeleteOnClose
+    End Property
+
+    Public Property Let bDeleteOnClose(st)
+        If objFileSystem.GetExtensionName(m_strFilename) <> "csv" Then
+            ' csv以外では必ずFalse
+            m_bDeleteOnClose = False
+        Else
+            ' csvのときのみセットできる
+            m_bDeleteOnClose = st
+        End If
+    End Property
+
+    ' csv形式のアイテム表を探してm_strFilenameに設定する
     Public Function FindCsv
         Dim csv_filename
         ' カレントディレクトリで探す
@@ -1361,7 +1835,7 @@ Class CItem
                 Exit Function
             End If
         End If
-        '見つかったファイルを保存する
+        '見つかったファイル名を保存する
         m_strFilename = csv_filename
         FindCsv = True  '戻り値:見つかった
     End Function
@@ -1389,6 +1863,7 @@ Class CItem
         '見つかったファイルを開く
         OpenXlsx = open(xlsx_filename)
         m_strFilename = xlsx_filename
+        m_bDeleteOnClose = False    ' csv以外では必ずFalse
     End Function
 
     Private Function open(filename)
@@ -1401,12 +1876,16 @@ Class CItem
         Err.Clear
         Set m_objItemBook = New CExWorkbook
         If m_objMain.objExApplication.OpenBook(filename, m_objItemBook) Then
-            m_bOpend = True
-'            If objExWorkbook.GetSheet(strSheetName, objExWorksheet) Then
-'            Else
-'                WScript.echo("ワークシートにアクセスできませんでした")
-'            End If
-            open = True   ' 戻り値:成功
+            Set m_objItemSheet = New CExWorksheet
+            If Not m_objItemBook.GetSheet(m_strItemSheetname, m_objItemSheet) Then
+                WScript.echo("ワークシートにアクセスできませんでした")
+                Set m_objItemSheet = Nothing
+                Set m_objItemBook = Nothing
+                open = False   ' 戻り値:失敗
+            Else
+                m_bOpend = True
+                open = True   ' 戻り値:成功
+            End If
         Else
             WScript.echo("ファイルを開けませんでした " & filename)
             Set m_objItemBook = Nothing
@@ -1420,8 +1899,21 @@ Class CItem
             ' カレントディレクトリに保存する
             filename = objFileSystem.GetAbsolutePathName(m_strFileBasename & ".xlsx")
             SaveXlsx = m_objItemBook.SaveAs(filename) ' 戻り値:SaveAsの結果による
+            m_strFilename = filename
         Else
             SaveXlsx = False ' 戻り値:失敗
+        End If
+    End Function
+
+    Public Function SaveCsvTo(dirname)
+        If Not (m_objItemBook Is Nothing) Then
+            Dim filename
+            ' 指定ディレクトリに保存する
+            filename = objFileSystem.GetAbsolutePathName(dirname & "\" & m_strFileBasename & ".csv")
+            SaveCsvTo = m_objItemBook.SaveAs(filename) ' 戻り値:SaveAsの結果による
+            m_strFilename = filename
+        Else
+            SaveCsvTo = False ' 戻り値:失敗
         End If
     End Function
 
@@ -1433,7 +1925,25 @@ Class CItem
         End If
         m_bOpend = False
         Close = True   ' 戻り値:成功
+
+        ' 閉じたらファイルを削除する指定があるなら処理する
+        If m_bDeleteOnClose Then
+            'アイテム表を削除する
+            objFileSystem.DeleteFile(m_strFilename)
+        End If
     End Function
+
+    ' 保存済みとマークする
+    Public Sub MarkAsSaved
+        on error resume next
+        m_objItemBook.MarkAsSaved
+    End Sub
+
+    ' アイテム表のアイテムを実質0個にする
+    Public Sub AllClear
+        on error resume next
+        m_objItemSheet.objComWorksheet.Range("E11:R89910").Clear
+    End Sub
 End Class
 
 'インターネットからファイルを取得するクラス
@@ -1511,7 +2021,7 @@ Class CInternetFile
 
         If m_objStream Is Nothing Then
         Else
-            m_objStream.SaveToFile strFilename, adSaveCreateOverWrite
+            m_objStream.SaveToFile strFilename, adSaveCreateOverWrite   '上書き
             If Err.number <> 0 Then
             Else
                 SaveToFile = True
@@ -1758,4 +2268,25 @@ End Function
 ' バックアップ用のファイル名を生成する
 Function BackupFilename(filename)
     BackupFilename = filename & ".backup_" & DateTimeString(Now)
+End Function
+
+' リリース用のディレクトリを生成する
+' 作成したディレクトリ名を返す
+' 失敗するとnullを返す
+Function CreateReleaseDirectory()
+    CreateReleaseDirectory = null
+    on error resume next
+    Dim strRelDirname
+    strRelDirname = "release_" & DateTimeString(Now)
+    strRelDirname = objFileSystem.GetAbsolutePathName(strRelDirname)
+    If Err.number <> 0 Then
+        Exit Function
+    Else
+        objFileSystem.CreateFolder strRelDirname
+        If Err.number <> 0 Then
+            Exit Function
+        Else
+            CreateReleaseDirectory = strRelDirname
+        End If
+    End If
 End Function
