@@ -406,6 +406,7 @@ Class CMain
 
         ' ショートカット作成
         CreateRunShortCut
+        CreateReleaseShortCut
 
         ' 試算表を閉じる
         objChart.Close
@@ -589,6 +590,22 @@ Class CMain
         objRunShortCut.IconLocation = "%SystemRoot%\system32\SHELL32.dll, 1"
         objRunShortCut.Save
         CreateRunShortCut = True
+    End Function
+
+    'コーデ試算リリースのショートカット作成
+    Public Function CreateReleaseShortCut
+        CreateReleaseShortCut = False
+        Dim strRunShortCutFilename
+        strRunShortCutFilename = objFileSystem.GetAbsolutePathName("Release.lnk")
+        Dim objRunShortCut
+        Set objRunShortCut = objWScriptShell.CreateShortcut(strRunShortCutFilename)
+        objRunShortCut.TargetPath = WScript.ScriptFullName
+        objRunShortCut.Arguments = "release"
+        objRunShortCut.WorkingDirectory = objCurrentDirectory.strCurrentDirectory
+        objRunShortCut.Description = "ミラクルニキのコーデ試算表のリリースファイルセットをサブディレクトリに作成します。"
+        objRunShortCut.IconLocation = "%SystemRoot%\system32\SHELL32.dll, 1"
+        objRunShortCut.Save
+        CreateReleaseShortCut = True
     End Function
 
     ' ポーリング
