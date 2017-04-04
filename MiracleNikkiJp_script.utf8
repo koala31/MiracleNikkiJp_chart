@@ -288,9 +288,9 @@ Class CMain
         CmdSetup = cCmdEnd
 
         ' MiracleNikkiJp_chart.xlsx のバックアップファイルを作成
-        FileBackup "MiracleNikkiJp_chart.xlsx" '失敗しても気にしない
+        fileBackup "MiracleNikkiJp_chart.xlsx" '失敗しても気にしない
         ' MyItems.csv のバックアップファイルを作成
-        FileBackup "MyItems.csv" '失敗しても気にしない
+        fileBackup "MyItems.csv" '失敗しても気にしない
 
         ' アイテム表オブジェクトの生成
         Set objItem = New CItem
@@ -392,15 +392,33 @@ Class CMain
         Else
         End If
 
+        ' マップの更新
+        If Not itemMapUpdate Then
+            btn = MsgBox("アイテムのマップを作成する際にエラーがありました。" & VbCrLf & _
+                "このマップは、試算表にアイテムをリストアップするために必要なものです。", _
+                vbOKOnly + vbInformation, cMsgBoxTitle)
+            objChart.MarkAsSaved   ' 保存しないで終了させるために、保存済みとマークする
+            objBalance.MarkAsSaved ' 保存しないで終了させるために、保存済みとマークする
+            objItem.MarkAsSaved    ' 保存しないで終了させるために、保存済みとマークする
+            Exit Function   'closeしなくてもオブジェクトの破棄で閉じられる
+        End If
+
         ' アイテム表.xlsxとして保存する(試算表.xmlのリンク先もアイテム表.xlsxになる)
         If objItem.SaveXlsx = False Then
             btn = MsgBox("アイテム表ファイルのxlsx版を保存する際にエラーがありました。", _
                 vbOKOnly + vbInformation, cMsgBoxTitle)
+            objChart.MarkAsSaved   ' 保存しないで終了させるために、保存済みとマークする
+            objBalance.MarkAsSaved ' 保存しないで終了させるために、保存済みとマークする
+            objItem.MarkAsSaved    ' 保存しないで終了させるために、保存済みとマークする
+            Exit Function   'closeしなくてもオブジェクトの破棄で閉じられる
         End If
         ' 試算表を保存する
         If objChart.SaveXlsx = False Then
             btn = MsgBox("試算表ファイルのxlsx版を保存する際にエラーがありました。", _
                 vbOKOnly + vbInformation, cMsgBoxTitle)
+            objChart.MarkAsSaved   ' 保存しないで終了させるために、保存済みとマークする
+            objBalance.MarkAsSaved ' 保存しないで終了させるために、保存済みとマークする
+            objItem.MarkAsSaved    ' 保存しないで終了させるために、保存済みとマークする
             Exit Function   'closeしなくてもオブジェクトの破棄で閉じられる
         End IF
 
@@ -549,7 +567,7 @@ Class CMain
 
     '指定のファイルからバックアップファイルを作成する
     ' 戻り値 成功でTrue, 失敗でFalse
-    Private Function FileBackup(filename)
+    Private Function fileBackup(filename)
         Dim strSrcFilename
         strSrcFilename = objFileSystem.GetAbsolutePathName(filename)
         Dim strBasename
@@ -570,9 +588,9 @@ Class CMain
         Err.Clear
         objFileSystem.CopyFile strSrcFilename, strBakFilename, True
         If Err.number <> 0 Then
-            FileBackup = False
+            fileBackup = False
         Else
-            FileBackup = True
+            fileBackup = True
         End If
     End Function
 
@@ -606,6 +624,32 @@ Class CMain
         objRunShortCut.IconLocation = "%SystemRoot%\system32\SHELL32.dll, 1"
         objRunShortCut.Save
         CreateReleaseShortCut = True
+    End Function
+
+    ' 試算表のマップを更新する
+    Private Function itemMapUpdate
+        itemMapUpdate = False   ' 戻り値のプリセット
+        on error resume next
+        ' マップをクリアする
+        If Not objChart.ItemMapClear Then
+            Exit Function   ' エラー
+        Else
+        End If
+        ' アイテム表の有効な(アイテムのある)整理番号を列挙して処理する
+        Dim unique_number   ' 整理番号
+        unique_number = objItem.EnumItemFirst   ' 最初の整理番号を取得
+        Do While unique_number > 0  ' 整理番号が有効範囲なら
+            If Not objChart.ItemMapByUniqueNumber(unique_number) Then
+                Exit Function
+            Else
+            End If
+            unique_number = 0   ' エラーリカバリ用
+            unique_number = objItem.EnumItemNext    ' 次の整理番号を取得(次がない場合は -1, エラー時は0となる)
+        Loop
+        If unique_number = 0 Then
+        Else
+            itemMapUpdate = True    ' 戻り値:成功
+        End If
     End Function
 
     ' ポーリング
@@ -1102,6 +1146,8 @@ Class CChart
     Private m_strFilename
     Private m_bOpend
     Private m_strMyItemsFilename
+    Private m_iMapBlockNumberLast   ' 最近登録したブロック番号(変化検知用)
+    Private m_iMapValidCount    ' マップの登録数
 
     Private Sub Class_Initialize
         strFileBasename = "MiracleNikkiJp_chart"
@@ -1115,6 +1161,8 @@ Class CChart
         m_strFilename = Empty
         m_bOpend = False
         m_strMyItemsFilename = "MyItems.csv"
+        m_iMapBlockNumberLast = -1
+        m_iMapValidCount = 0
     End Sub
     Private Sub Class_Terminate
         Close
@@ -1248,7 +1296,7 @@ Class CChart
                 Close = True   ' 戻り値:成功
             Else
                 ' MiracleNikkiJp_chart.xmlの整形.vbs を実行する。
-                If Not XmlFileForming() Then
+                If Not xmlFileForming() Then
                     ' 失敗
                 Else
                     Close = True   ' 戻り値:成功
@@ -1376,9 +1424,9 @@ Class CChart
     End Sub
 
     ' MiracleNikkiJp_chart.xmlの整形.vbs を実行する。
-    Private Function XmlFileForming
+    Private Function xmlFileForming
         on error resume next
-        XmlFileForming = False  ' 戻り値を失敗でプリセットしておく
+        xmlFileForming = False  ' 戻り値を失敗でプリセットしておく
         If m_bOpend Then
             Exit Function   ' 開いているなら処理できない
         End If
@@ -1398,11 +1446,11 @@ Class CChart
         dst_stream.Type = adTypeText
         dst_stream.Charset = "utf-8"
         dst_stream.Open
-        ' message
-        MsgBox objFileSystem.GetFileName(m_strFilename) & _
-                "の整形を開始します。" & VbCrLf & _
-                "しばらくかかると思います。終了したらお知らせします。", _
-                vbOKOnly + vbInformation, cMsgBoxTitle
+'        ' message
+'        MsgBox objFileSystem.GetFileName(m_strFilename) & _
+'                "の整形を開始します。" & VbCrLf & _
+'                "しばらくかかると思います。終了したらお知らせします。", _
+'                vbOKOnly + vbInformation, cMsgBoxTitle
         Dim line_str
         Dim prev_line_str
         Dim row_line_str
@@ -1537,10 +1585,67 @@ Class CChart
         dst_stream.Close
         If Err.number <> 0 Then
         Else
-            XmlFileForming = True   ' 戻り値:成功
+            xmlFileForming = True   ' 戻り値:成功
         End If
     End Function
 
+    ' マップをクリアする
+    Public Function ItemMapClear
+        ItemMapClear = False    ' 戻り値を失敗でプリセットしておく
+        ' Range("map_base") を起点として900行10列の範囲がマップ
+        ' 空間サイズ9万アイテム --> 9000ブロック --> 900行 x 10列
+        Dim tmp
+        on error resume next
+        Set tmp = m_objQuestSheet.objComWorksheet.Range("map_base").Resize(900, 10)
+        tmp.Value = 8999    ' クリア値は最終ブロックを表す 8999
+        If Err.number <> 0 Then
+        Else
+            m_iMapBlockNumberLast = -1  ' 最近登録したブロック番号(変化検知用)もクリア
+            m_iMapValidCount = 0    ' マップの登録数もクリア
+            ItemMapClear = True     ' 戻り値:成功
+        End If
+    End Function
+
+    ' 使用するアイテムをマップに登録する。アイテム毎にコールする
+    ' unique_number: 使用するアイテムの整理番号
+    Public Function ItemMapByUniqueNumber(unique_number)
+        ItemMapByUniqueNumber = False    ' 戻り値を失敗でプリセットしておく
+        If (unique_number <= 0) Or (unique_number > 90000) Then
+            Exit Function   ' 引数が範囲外
+        End If
+
+        Dim block_number    ' ブロック番号(マップに記述する値で整理番号の1/10)
+        block_number = Int((unique_number - 1) / 10)    ' ブロック番号を算出
+        If m_iMapBlockNumberLast <> block_number Then   ' ブロック番号が変化したら
+            m_iMapBlockNumberLast = block_number    ' 次のブロック番号変化検知のために保存
+            If Not itemMapAppend(block_number) Then ' ブロック番号をマップに追加する
+                Exit Function   ' エラー
+            Else
+            End If
+        Else
+            ' 既に登録済みのブロック番号なので処理なし
+        End If
+        ItemMapByUniqueNumber = True    ' 戻り値:成功
+    End Function
+
+    ' ブロック番号をマップに追加登録する。
+    ' block_number: 追加登録するブロック番号
+    Private Function itemMapAppend(block_number)
+        ItemMapAppend = False    ' 戻り値を失敗でプリセットしておく
+        ' マップの記録位置を決定する
+        Dim row
+        Dim column
+        row = Int(m_iMapValidCount / 10)
+        column = m_iMapValidCount Mod 10
+        ' マップの所定の位置に指定の値を記録する
+        on error resume next
+        m_objQuestSheet.objComWorksheet.Range("map_base").Offset(row, column).Value = block_number
+        If Err.number <> 0 Then
+        Else
+            m_iMapValidCount = m_iMapValidCount + 1 ' マップの登録数を+1
+            ItemMapAppend = True    ' 戻り値:成功
+        End If
+    End Function
 End Class
 
 ' バランスクラス
@@ -1682,7 +1787,7 @@ Class CBalance
                 Close = True   ' 戻り値:成功
             Else
                 ' MiracleNikkiJp_balance.csv をシェアする準備.vbs を実行する。
-                If Not CsvFileForming() Then
+                If Not csvFileForming() Then
                     ' 失敗
                 Else
                     Close = True   ' 戻り値:成功
@@ -1702,9 +1807,9 @@ Class CBalance
     End Sub
 
     ' MiracleNikkiJp_balance.csv をシェアする準備.vbs 相当を実行する。
-    Private Function CsvFileForming
+    Private Function csvFileForming
         on error resume next
-        CsvFileForming = False  ' 戻り値を失敗でプリセットしておく
+        csvFileForming = False  ' 戻り値を失敗でプリセットしておく
         If m_bOpend Then
             Exit Function   ' 開いているなら処理できない
         End If
@@ -1724,7 +1829,7 @@ Class CBalance
             ' already utf-8
             src_stream.Close
             ' MiracleNikkiJp_balance.csvのシェアの準備は既にできている
-            CsvFileForming = True
+            csvFileForming = True
             Exit Function
         End If
         ' 文字列をutf-8に、タブをカンマに変換する
@@ -1755,7 +1860,7 @@ Class CBalance
         ' finish
         If Err.number <> 0 Then
         Else
-            CsvFileForming = True
+            csvFileForming = True
         End If
     End Function
 End Class
@@ -1770,6 +1875,8 @@ Class CItem
     Private m_strFilename
     Private m_bOpend
     Private m_bDeleteOnClose '閉じたらファイルを削除する指定
+    Private m_iItems_row_end ' アイテム表の最後の行番号
+    Private m_objEnumCurCell ' アイテム列挙で用いる現在セルのRange
 
     Private Sub Class_Initialize
         m_strFileBasename = "MiracleNikkiJp_items"
@@ -1780,6 +1887,8 @@ Class CItem
         m_strFilename = Empty
         m_bOpend = False
         m_bDeleteOnClose = False
+        m_iItems_row_end = 0
+        Set m_objEnumCurCell = Nothing
     End Sub
     Private Sub Class_Terminate
         Close
@@ -1900,6 +2009,11 @@ Class CItem
                 Set m_objItemBook = Nothing
                 open = False   ' 戻り値:失敗
             Else
+                ' 基本情報の取得
+                ' 最後の行の行番号を調査する
+                m_iItems_row_end = 90010    ' エラーリカバリとしてプリセット
+                m_iItems_row_end = m_objItemSheet.objComWorksheet.Range("A11").End(4).Row ' end 
+
                 m_bOpend = True
                 open = True   ' 戻り値:成功
             End If
@@ -1942,6 +2056,8 @@ Class CItem
         End If
         m_bOpend = False
         Close = True   ' 戻り値:成功
+        ' 使わなくなるオブジェクトの解放
+        m_objEnumCurCell = Nothing
 
         ' 閉じたらファイルを削除する指定があるなら処理する
         If m_bDeleteOnClose Then
@@ -1961,6 +2077,51 @@ Class CItem
         on error resume next
         m_objItemSheet.objComWorksheet.Range("E11:R89910").Clear
     End Sub
+
+    ' アイテムの一覧取得の準備を行い、最初のアイテムの整理番号を返す。
+    ' エラー時は0を返す。
+    ' アイテムが一つもない場合は -1を返す。
+    Public Function EnumItemFirst
+        EnumItemFirst = 0   ' 戻り値:エラーとしてプリセット
+        on error resume next
+        Set m_objEnumCurCell = m_objItemSheet.objComWorksheet.Range("F11")
+        If Err.number <> 0 Then
+            ' エラー
+        Else
+            If IsEmpty(m_objEnumCurCell) Then
+                EnumItemFirst = EnumItemNext
+            Else
+                EnumItemFirst = m_objItemSheet.objComWorksheet.Cells(m_objEnumCurCell.Row, 1).Value
+            End If
+        End If
+    End Function
+
+    ' アイテムの一覧取得として次のアイテムの整理番号を返す。
+    ' エラー時は0を返す。
+    ' 次のアイテムがない場合は -1を返す。
+    Public Function EnumItemNext
+        EnumItemNext = 0   ' 戻り値:エラーとしてプリセット
+        on error resume next
+        Do
+            If IsEmpty(m_objEnumCurCell) Then
+                set m_objEnumCurCell = m_objEnumCurCell.End(4) ' end key down
+            Else
+                set m_objEnumCurCell = m_objEnumCurCell.Offset(1, 0)
+            End If
+        Loop While IsEmpty(m_objEnumCurCell) And (m_objEnumCurCell.Row <= m_iItems_row_end)
+        
+        If m_objEnumCurCell.Row > m_iItems_row_end Then
+            ' 最後の次まで行ってしまった場合
+            EnumItemNext = -1  ' 戻り値:次のアイテムがない
+        Else
+            ' A列にある整理番号を取得して戻り値とする。
+            EnumItemNext = m_objItemSheet.objComWorksheet.Cells(m_objEnumCurCell.Row, 1).Value
+        End If
+
+'items_sheet --> m_objItemSheet.objComWorksheet
+'items_row_end --> m_iItems_row_end
+'cur_cell --> m_objEnumCurCell
+    End Function
 End Class
 
 'インターネットからファイルを取得するクラス
