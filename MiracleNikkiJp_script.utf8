@@ -20,6 +20,10 @@ Const adTypeBinary = 1
 Const adTypeText = 2
 Const adReadAll = -1
 Const adReadLine = -2
+Const xlShiftDown = -4121
+Const xlShiftToLeft = -4159
+Const xlShiftToRight = -4161
+Const xlShiftUp = -4162
 
 ' コマンド文字列の一覧
 Const cCmdEnd = "end"
@@ -386,12 +390,6 @@ Class CMain
         Else
         End If
 
-        ' アイテム所有情報があればリストアする
-        IF objChart.MyItemsRead = False Then
-            'アイテム所有情報がなければそのまま
-        Else
-        End If
-
         ' マップの更新
         If Not itemMapUpdate Then
             btn = MsgBox("アイテムのマップを作成する際にエラーがありました。" & VbCrLf & _
@@ -401,6 +399,22 @@ Class CMain
             objBalance.MarkAsSaved ' 保存しないで終了させるために、保存済みとマークする
             objItem.MarkAsSaved    ' 保存しないで終了させるために、保存済みとマークする
             Exit Function   'closeしなくてもオブジェクトの破棄で閉じられる
+        End If
+
+        ' マップに合わせて行を用意する
+        If Not objChart.RowsSetup Then
+            btn = MsgBox("試算表の行を必要な数だけ準備する際にエラーがありました。", _
+                vbOKOnly + vbInformation, cMsgBoxTitle)
+            objChart.MarkAsSaved   ' 保存しないで終了させるために、保存済みとマークする
+            objBalance.MarkAsSaved ' 保存しないで終了させるために、保存済みとマークする
+            objItem.MarkAsSaved    ' 保存しないで終了させるために、保存済みとマークする
+            Exit Function   'closeしなくてもオブジェクトの破棄で閉じられる
+        End If
+
+        ' アイテム所有情報があればリストアする
+        IF objChart.MyItemsRead = False Then
+            'アイテム所有情報がなければそのまま
+        Else
         End If
 
         ' アイテム表.xlsxとして保存する(試算表.xmlのリンク先もアイテム表.xlsxになる)
@@ -481,6 +495,14 @@ Class CMain
         ' 試算表.xlsxを開く
         If obj_Chart.OpenXlsx = False Then
             ' 試算表.xlsxが開けないならエラーリターン
+            Exit Function
+        Else
+        End If
+
+        ' 試算表の行をリリース用として削除する。
+        ' 後のセットアップで必要なだけけ増やされる。
+        If Not obj_Chart.RowsShrink Then
+            ' 削除できないならエラーリターン
             Exit Function
         Else
         End If
@@ -630,6 +652,14 @@ Class CMain
     Private Function itemMapUpdate
         itemMapUpdate = False   ' 戻り値のプリセット
         on error resume next
+        ' Excelの各社更新を停止して高速化
+        ' スコープを抜ける時破壊されて、自動的に停止前に戻る
+        Dim obj_DisableScreenUpdating
+        Dim obj_DisableEvents
+        Dim obj_DisableCalculation
+        Set obj_DisableScreenUpdating = New CDisableScreenUpdating
+        Set obj_DisableEvents = New CDisableEvents
+        Set obj_DisableCalculation = New CDisableCalculation
         ' マップをクリアする
         If Not objChart.ItemMapClear Then
             Exit Function   ' エラー
@@ -1148,6 +1178,7 @@ Class CChart
     Private m_strMyItemsFilename
     Private m_iMapBlockNumberLast   ' 最近登録したブロック番号(変化検知用)
     Private m_iMapValidCount    ' マップの登録数
+    Private m_iSeqNumberColumn  ' 通番の列
 
     Private Sub Class_Initialize
         strFileBasename = "MiracleNikkiJp_chart"
@@ -1163,6 +1194,7 @@ Class CChart
         m_strMyItemsFilename = "MyItems.csv"
         m_iMapBlockNumberLast = -1
         m_iMapValidCount = 0
+        m_iSeqNumberColumn = 26
     End Sub
     Private Sub Class_Terminate
         Close
@@ -1213,8 +1245,20 @@ Class CChart
             Exit Function
         End If
         '見つかったファイルを開く
-        OpenXml = open(xml_filename)
+        If Not open(xml_filename) Then
+            ' オープン失敗
+            OpenXml = False
+            Exit Function
+        End If
         m_strFilename = xml_filename
+        ' シートの情報を読み取る
+        If Not readSheetProfile Then
+            ' シートの内容が想定外
+            OpenXml = False
+            Exit Function
+        Else
+            OpenXml = True
+        End If
     End Function
 
     ' xlsx形式の試算表を開く
@@ -1228,8 +1272,20 @@ Class CChart
             Exit Function
         End If
         '見つかったファイルを開く
-        OpenXlsx = open(xlsx_filename)
+        IF Not open(xlsx_filename) Then
+            ' オープン失敗
+            OpenXlsx = False
+            Exit Function
+        End If
         m_strFilename = xlsx_filename
+        ' シートの情報を読み取る
+        If Not readSheetProfile Then
+            ' シートの内容が想定外
+            OpenXlsx = False
+            Exit Function
+        Else
+            OpenXlsx = True
+        End If
     End Function
 
     Private Function open(filename)
@@ -1645,6 +1701,123 @@ Class CChart
             m_iMapValidCount = m_iMapValidCount + 1 ' マップの登録数を+1
             ItemMapAppend = True    ' 戻り値:成功
         End If
+    End Function
+
+    ' 試算表の所定の行を所定の位置にコピーして行を増やす
+    ' seq_number: コピーした結果の先頭行に割り当てる通番
+    ' 戻り値: -1:失敗, 正常値:コピーした結果の最後の行に割り当てた通番+1
+    ' 　　　　この値は、この関数の実行により貼り付け位置の通番に設定される
+    Private Function listCopy(seq_number)
+        listCopy = -1    ' 戻り値を失敗でプリセットしておく
+        on error resume next
+        ' 名前の付いた範囲 "list_copy_source" をクリップボードにコピー
+        m_objQuestSheet.objComWorksheet.Range("list_copy_source").Copy
+        ' コピー元の行数を特定する
+        Dim rows_source
+        rows_source = m_objQuestSheet.objComWorksheet.Range("list_copy_source").Rows.Count
+        ' 貼り付け位置の行を特定する
+        Dim row_dest
+        row_dest = m_objQuestSheet.objComWorksheet.Range("list_copy_dest").Row
+        ' 名前の付いた範囲 "list_copy_dest" の前に挿入で貼り付ける
+        m_objQuestSheet.objComWorksheet.Range("list_copy_dest").Insert xlShiftDown
+        ' Excelをクリップボードから切り離す
+        ' 切り取りモードもコピーモードも選択されていない状態とする。
+        objMain.objExApplication.objComApplication.CutCopyMode = False
+        ' 通番の付与
+        Dim objSeqNumberDest
+        Set objSeqNumberDest = m_objQuestSheet.objComWorksheet.Cells(row_dest, m_iSeqNumberColumn)
+        Dim i
+        For i = 0 To rows_source
+            objSeqNumberDest.Offset(i, 0).Value = seq_number + i
+        Next
+        ' エラーがあったか確認する
+        If Err.number <> 0 Then
+        Else
+            listCopy = seq_number + rows_source ' 戻り値:最後の行の通番
+        End If
+    End Function
+
+    ' 試算表の行を準備する。マップに合わせて行を用意する。
+    Public Function RowsSetup
+        RowsSetup = False    ' 戻り値を失敗でプリセットしておく
+
+        ' 通番最大を取得する
+        Dim seq_max
+        seq_max = m_objQuestSheet.objComWorksheet.Range("通番最大").Value
+        
+        ' Excelの各社更新を停止して高速化
+        ' スコープを抜ける時破壊されて、自動的に停止前に戻る
+        Dim obj_DisableScreenUpdating
+        Dim obj_DisableEvents
+        Dim obj_DisableCalculation
+        Set obj_DisableScreenUpdating = New CDisableScreenUpdating
+        Set obj_DisableEvents = New CDisableEvents
+        Set obj_DisableCalculation = New CDisableCalculation
+
+        Dim loop_append_count
+        loop_append_count = Int((m_iMapValidCount + 9) / 10) - 1    ' 最初100行はあるから-1
+        Dim i 
+        For i = 1 To loop_append_count
+            ' 行をコピーして増やす
+            seq_max = listCopy(seq_max)
+            If seq_max < 0 Then
+                RowsSetup = False    ' 戻り値:失敗
+            Else
+                RowsSetup = True    ' 戻り値:成功
+            End If
+        next
+
+    End Function
+
+    ' 試算表の行をリリース用として削除する。後のセットアップで必要なだけけ増やされる。
+    Public Function RowsShrink
+        RowsShrink = False    ' 戻り値を失敗でプリセットしておく
+        on error resume next
+        ' コピー元の行を特定する
+        Dim row_source
+        row_source = m_objQuestSheet.objComWorksheet.Range("list_copy_source").Row
+        ' コピー元の行数を特定する
+        Dim rows_source
+        rows_source = m_objQuestSheet.objComWorksheet.Range("list_copy_source").Rows.Count
+        ' 貼り付け位置の行を特定する
+        Dim row_dest
+        row_dest = m_objQuestSheet.objComWorksheet.Range("list_copy_dest").Row
+        ' 削除する行の先頭を決定する
+        Dim row_delete
+        row_delete = row_source + rows_source
+        ' 削除する行数を決定する
+        Dim rows_delete
+        rows_delete = row_dest - row_delete
+        ' 削除する最初の行全体のRangeオブジェクトを取得する
+        Dim objDeleteRange
+        Set objDeleteRange = m_objQuestSheet.objComWorksheet.Rows(row_delete)
+        ' RangeをResizeして削除する領域をカバーする
+        Set objDeleteRange = objDeleteRange.Resize(rows_delete, objDeleteRange.Columns.Count)
+        ' 削除する行を削除する
+        objDeleteRange.Delete(xlShiftUp)
+        Set objDeleteRange = Nothing    ' 解放
+        ' 直後の行の通番に削除を反映して更新
+
+        ' 貼り付け位置の行を再度特定する
+        row_dest = m_objQuestSheet.objComWorksheet.Range("list_copy_dest").Row
+        ' 貼り付け位置の通番のRangeオブジェクトを取得する
+        Dim objSeqNumberDest
+        Set objSeqNumberDest = m_objQuestSheet.objComWorksheet.Cells(row_dest, m_iSeqNumberColumn)
+        objSeqNumberDest.Value = objSeqNumberDest.Offset(-1, 0).Value + 1
+        ' エラーチェック
+        If Err.number <> 0 Then
+        Else
+            RowsShrink = True    ' 戻り値:成功
+        End If
+    End Function
+
+    ' シートのプロファイルを読む
+    Private Function readSheetProfile
+        readSheetProfile = False    ' 戻り値を失敗でプリセットしておく
+        ' 通番の列を特定する
+        m_iSeqNumberColumn = m_objQuestSheet.objComWorksheet.Range("通番").Column
+
+        readSheetProfile = True ' 戻り値:成功
     End Function
 End Class
 
