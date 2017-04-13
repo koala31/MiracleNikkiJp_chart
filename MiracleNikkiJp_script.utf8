@@ -1447,23 +1447,24 @@ Class CChart
             End If
             Dim objRange1   '名前付き範囲"整理番号"の1つのセル
             For Each objRange1 In objNumberRange.Cells '整理番号の各セルについて
-                If bOpenFail Then
-                    'オープン失敗  (アイテム所有情報がないなら全て所有とする)
-                    Dim strNameCell
-                    strNameCell = m_objQuestSheet.GetCellText(objRange1.Row, iNameColumn)
-                    If (strNameCell = "") Or (strNameCell = "－") Then
-                    Else
-                        If Not m_objQuestSheet.LetCellValue(objRange1.Row, iOwnColumn, "◯") Then
-                        Else
-                        End If
-                    End If
-                ElseIf objMyItems.Find(objRange1.Value) Then
-                    '整理番号がアイテム所有情報で見つかったら
-                    '  on error resume nextでは次のステートメントを実行するのでここで吸収する
-                    'エラーなら所有しているとする
-                    m_objQuestSheet.Cell(objRange1.Row, iOwnColumn).Value = "◯"
-                Else
+                Dim strNameCell
+                strNameCell = m_objQuestSheet.GetCellText(objRange1.Row, iNameColumn)
+                If (strNameCell = "") Or (strNameCell = "－") Then
+                    ' アイテム名がないなら所有していない
                     m_objQuestSheet.Cell(objRange1.Row, iOwnColumn).Value = ""
+                Else
+                    ' アイテム名があるなら
+                    If bOpenFail Then
+                        'オープン失敗  (アイテム所有情報がないなら全て所有とする)
+                        m_objQuestSheet.Cell(objRange1.Row, iOwnColumn).Value = "◯"
+                    ElseIf objMyItems.Find(objRange1.Value) Then
+                        '整理番号がアイテム所有情報で見つかったら
+                        '  on error resume nextでは次のステートメントを実行するのでここで吸収する
+                        'エラーなら所有しているとする
+                        m_objQuestSheet.Cell(objRange1.Row, iOwnColumn).Value = "◯"
+                    Else
+                        m_objQuestSheet.Cell(objRange1.Row, iOwnColumn).Value = ""
+                    End If
                 End If
             Next
             objMyItems.Close
