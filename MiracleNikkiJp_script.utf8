@@ -507,6 +507,9 @@ Class CMain
         Else
         End If
 
+        ' 所定のセル内容をプリセットしておく
+        ' deb_リリースでクリアするべき箇所.txt
+
         ' 保存先ディレクトリを作成
         Dim strRelDirname
         strRelDirname = CreateReleaseDirectory()
@@ -1805,6 +1808,25 @@ Class CChart
         Dim objSeqNumberDest
         Set objSeqNumberDest = m_objQuestSheet.objComWorksheet.Cells(row_dest, m_iSeqNumberColumn)
         objSeqNumberDest.Value = objSeqNumberDest.Offset(-1, 0).Value + 1
+        
+        ' マップも削除する
+        Dim objMapRange
+        Set objMapRange = m_objQuestSheet.objComWorksheet.Range("map_base")
+        Dim row_map ' マップの先頭行
+        row_map = objMapRange.Row
+        Const rows_keep = 2  ' 残すマップの行数
+        Const cols_map = 10
+        row_delete = row_map + rows_keep ' 削除開始行
+        Dim row_map_end ' マップの最終行
+        row_map_end = row_map + 900 - 1 ' エラーリカバリとしてプリセット
+        row_map_end = objMapRange.End(4).Row ' end 
+        rows_delete = row_map_end - row_delete + 1  ' 削除する行数
+        Set objDeleteRange = objMapRange.Offset(rows_keep, 0).Resize(rows_delete, cols_map)
+        ' 削除する行を削除する
+        objDeleteRange.Delete(xlShiftUp)
+        Set objDeleteRange = Nothing    ' 解放
+        Set objMapRange = Nothing       ' 解放
+        
         ' エラーチェック
         If Err.number <> 0 Then
         Else
