@@ -10,9 +10,10 @@ wikiのリンクを置いておきます。[MiracleNikkiJp_chartのwiki](https:/
 ### 目指すところ
 公式アプリのコーデ評価計算式は不明ですから、あくまで御参考としての試算となります。  
 この試算表が目指すのは、属性の打ち消し合いを避けて、なるべく高い評価を得ることです。 
-アイテム収集数1100程度で、コロッセオは1敗～全勝で回せています。
-![スクリーンショット1](https://github.com/koala31/MiracleNikkiJp_chart/wiki/images/screen-beta1-1.png)  
-おまけの機能として、アイテムに色情報を付けています。（私の独断ですが）  
+私の場合アイテム収集数1400程度で、コロッセオは200連勝越えです。  
+bata3版では、アクセサリーの分類変更に対応しました。
+![スクリーンショット1](https://github.com/koala31/MiracleNikkiJp_chart/wiki/images/screen-beta3-1.png)  
+おまけの機能として、アイテムに色情報を付けています。（全てではないのですが）  
 実用性は不明ですが、色で加点することも可能なので、カラーコーディネートもできるかもしれません。  
 一例として下のコーデは、上の点数重視コーデに白で加点してアイテム数も減らしています。
 ![スクリーンショット1](https://github.com/koala31/MiracleNikkiJp_chart/wiki/images/screen-beta1-2.png)  
