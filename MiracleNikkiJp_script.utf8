@@ -509,6 +509,11 @@ Class CMain
 
         ' 所定のセル内容をプリセットしておく
         ' deb_リリースでクリアするべき箇所.txt
+        If Not obj_Chart.QuestClear Then
+            ' プリセットできないならエラーリターン
+            Exit Function
+        Else
+        End If
 
         ' 保存先ディレクトリを作成
         Dim strRelDirname
@@ -1831,6 +1836,72 @@ Class CChart
         If Err.number <> 0 Then
         Else
             RowsShrink = True    ' 戻り値:成功
+        End If
+    End Function
+
+    ' クエスト条件をクリアする
+    Public Function QuestClear
+        QuestClear = False    ' 戻り値を失敗でプリセットしておく
+        on error resume next
+        m_objQuestSheet.objComWorksheet.Range("タグ1").Value = ""
+        m_objQuestSheet.objComWorksheet.Range("タグ重視1").Value = "タグ重視+++"
+        m_objQuestSheet.objComWorksheet.Range("タグ2").Value = ""
+        m_objQuestSheet.objComWorksheet.Range("タグ重視2").Value = "タグ重視+++"
+        m_objQuestSheet.objComWorksheet.Range("色1").Value = ""
+        m_objQuestSheet.objComWorksheet.Range("色重視1").Value = "色重視+"
+        m_objQuestSheet.objComWorksheet.Range("色2").Value = ""
+        m_objQuestSheet.objComWorksheet.Range("色重視2").Value = "色重視+"
+        m_objQuestSheet.objComWorksheet.Range("スタイル").Value = "ドレス"
+        m_objQuestSheet.objComWorksheet.Range("検索対象").Value = "持っているアイテム"
+        m_objQuestSheet.objComWorksheet.Range("華麗シンプル").Value = "評価しない"
+        m_objQuestSheet.objComWorksheet.Range("エレガントアクティブ").Value = "評価しない"
+        m_objQuestSheet.objComWorksheet.Range("大人キュート").Value = "評価しない"
+        m_objQuestSheet.objComWorksheet.Range("セクシーピュア").Value = "評価しない"
+        m_objQuestSheet.objComWorksheet.Range("ウォームクール").Value = "評価しない"
+        m_objQuestSheet.objComWorksheet.Range("反属性減点").Value = "100%"
+        m_objQuestSheet.objComWorksheet.Range("指定").Value = ""
+        m_objQuestSheet.objComWorksheet.Range("所有").Value = ""
+        m_objQuestSheet.objComWorksheet.Range("集計_採用").Value = "◯"
+        Dim objShuruiRane
+        Set objShuruiRane = m_objQuestSheet.objComWorksheet.Range("集計_種類")
+        objShuruiRane(1).Value = "ヘアスタイル"
+        objShuruiRane(2).Value = "ドレス"
+        objShuruiRane(3).Value = "コート"
+        objShuruiRane(4).Value = "トップス"
+        objShuruiRane(5).Value = "ボトムス"
+        objShuruiRane(6).Value = "靴下"
+        objShuruiRane(7).Value = "靴下・ガーター"
+        objShuruiRane(8).Value = "シューズ"
+        objShuruiRane(9).Value = "ヘッドアクセ"
+        objShuruiRane(10).Value = "ヴェール"
+        objShuruiRane(11).Value = "カチューシャ"
+        objShuruiRane(12).Value = "つけ耳"
+        objShuruiRane(13).Value = "耳飾り"
+        objShuruiRane(14).Value = "マフラー"
+        objShuruiRane(15).Value = "ネックレス"
+        objShuruiRane(16).Value = "右手飾り"
+        objShuruiRane(17).Value = "左手飾り"
+        objShuruiRane(18).Value = "手袋"
+        objShuruiRane(19).Value = "右手持ち"
+        objShuruiRane(20).Value = "左手持ち"
+        objShuruiRane(21).Value = "両手持ち"
+        objShuruiRane(22).Value = "腰飾り"
+        objShuruiRane(23).Value = "フェイス"
+        objShuruiRane(24).Value = "ボディ"
+        objShuruiRane(25).Value = "タトゥー"
+        objShuruiRane(26).Value = "羽根"
+        objShuruiRane(27).Value = "しっぽ"
+        objShuruiRane(28).Value = "前景"
+        objShuruiRane(29).Value = "後景"
+        objShuruiRane(30).Value = "吊り"
+        objShuruiRane(31).Value = "床"
+        objShuruiRane(32).Value = "肌"
+        objShuruiRane(33).Value = "メイク"
+        
+        ' エラーチェック
+        If Err.number <> 0 Then
+        Else
+            QuestClear = True    ' 戻り値:成功
         End If
     End Function
 
