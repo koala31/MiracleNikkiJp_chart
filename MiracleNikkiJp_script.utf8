@@ -30,9 +30,27 @@ Const cCmdEnd = "end"
 Const cCmdSetup = "setup"
 Const cCmdRelease = "release"
 Const cCmdRun = "run"
+Const cCmdStartAndLeave = "strat_and_leave"
 Const cCmdDbgPoll = "debug_poll"
 
+Class CGlobals
+    Public ExitWithoutClosingExcel  ' Excelを閉じずに終了する
+
+    Public Property Get Version ' バージョン
+        Version = cVersion
+    End Property
+
+    Private Sub Class_Initialize
+        ExitWithoutClosingExcel = False
+    End Sub
+    Private Sub Class_Terminate
+    End Sub
+
+End Class
+
 ' 共通オブジェクト
+Dim objGlobals
+Set objGlobals = New CGlobals
 Dim objWScriptShell
 Set objWScriptShell = CreateObject("WScript.Shell")
 Dim objFileSystem
@@ -133,6 +151,25 @@ Do While strCommand <> cCmdEnd
             strCommand = cCmdEnd    'エラー時に次は終了
             ' コマンド実行。次に実行するコマンドは戻り値で指定される
             strCommand = objMain.CmdRun(bCmdStatus)
+            If Not bCmdStatus Then
+                '起動異常終了メッセージ
+                btn = MsgBox(cAppName & "を開きましたが、途中でエラーがありました。" & VbCrLf & _
+                    "再び試みますか?", _
+                    vbYesNo + vbQuestion + vbDefaultButton2, cMsgBoxTitle)
+                If btn <> vbYes Then
+                Else
+                    strCommand = cCmdRun
+                End If
+            Else
+                '起動正常
+            End If
+        Case cCmdStartAndLeave
+            strCommand = cCmdEnd    'エラー時に次は終了
+            ' コマンド実行。次に実行するコマンドは戻り値で指定される
+            strCommand = objMain.CmdStartAndLeave(bCmdStatus)
+
+            strCommand = cCmdEnd
+
             If Not bCmdStatus Then
                 '起動異常終了メッセージ
                 btn = MsgBox(cAppName & "を開きましたが、途中でエラーがありました。" & VbCrLf & _
@@ -595,6 +632,34 @@ Class CMain
         status = True
     End Function
 
+    ' strat_and_leaveコマンド実行。次のコマンドを戻り値で指定する
+    ' status参照引数: 成功でTrue設定される。失敗では呼び出し前の値を維持する
+    Public Function CmdStartAndLeave(byRef status)
+        ' Excelを閉じずに終了する指定
+        objGlobals.ExitWithoutClosingExcel = True
+        
+        ' アイテム表オブジェクトの生成
+        Set objItem = New CItem
+        Set objItem.objMain = Me
+        ' アイテム表.xlsxを開く
+        objItem.OpenXlsx
+        ' バランスオブジェクトの生成
+        Set objBalance = New CBalance
+        Set objBalance.objMain = Me
+        ' バランス.csvを開く
+        objBalance.OpenCsv
+        ' 試算表オブジェクトの生成
+        Set objChart = New CChart
+        Set objChart.objMain = Me
+        ' 試算表.xlsxを開く
+        objChart.OpenXlsx
+        ' 次に実行するコマンドを戻り値で指定
+        CmdStartAndLeave = cCmdEnd
+
+        'statusの更新
+        status = True
+    End Function
+
     '指定のファイルからバックアップファイルを作成する
     ' 戻り値 成功でTrue, 失敗でFalse
     Private Function fileBackup(filename)
@@ -806,7 +871,11 @@ Class CExApplication
             Dim t
             For t = 0 To cRetry
                 Err.Clear
-                m_objComApplication.Quit
+                ' Excelを閉じずに終了する指定があるか
+                If objGlobals.ExitWithoutClosingExcel Then
+                Else
+                    m_objComApplication.Quit
+                End If
                 If Err.number <> 0 Then
                     Quit = False   ' 戻り値:失敗
                     ' 少し待ってみる
@@ -1027,8 +1096,12 @@ Class CExWorkbook
         Err.Clear
         'child worksheetを破棄
         deleteChilds
-        'Excelファイルを閉じる
-        m_objComWorkbook.Close
+        ' Excelを閉じずに終了する指定があるか
+        If objGlobals.ExitWithoutClosingExcel Then
+        Else
+            'Excelファイルを閉じる
+            m_objComWorkbook.Close
+        End If
         If Err.number <> 0 Then
             CloseBook = False   ' 戻り値:失敗
         Else
