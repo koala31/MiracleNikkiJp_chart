@@ -303,17 +303,20 @@ Class CMain
     Public objItem    ' as CItem
     Public objBalance ' as CBalance
     Public objChart   ' as CChart
+    Private m_objPollService    ' as IPoll
 
     Private Sub Class_Initialize
         Set m_objExApplication = New CExApplication
         Set objItem    = Nothing
         Set objBalance = Nothing
         Set objChart   = Nothing
+        Set m_objPollService = New IPoll
     End Sub
     Private Sub Class_Terminate
         Set objChart   = Nothing
         Set objBalance = Nothing
         Set objItem    = Nothing
+        Set m_objPollService = Nothing
         Set m_objExApplication = Nothing
     End Sub
 
@@ -755,10 +758,26 @@ Class CMain
         End If
     End Function
 
+    ' ポーリング参加の受付
+    ' 戻り値 成功=True, 失敗=False
+    Public Function Poll_Join(client_obj)
+        Poll_Join = m_objPollService.Poll_Join(client_obj)
+    End Function
+
+    ' ポーリング離脱の受付
+    ' 戻り値 成功=True, 失敗=False
+    Public Function Poll_Release(client_obj)
+        Poll_Release = m_objPollService.Poll_Release(client_obj)
+    End Function
+
     ' ポーリング
     ' 戻り値 ポーリング継続可=True, ポーリング中止要求=False
     Public Function Poll
         Poll = True
+
+        ' ポーリングのサービスを実行
+        m_objPollService.Poll
+
         If m_objExApplication.IsWorkbookAlive(objChart.objChartBook) = False Then
             Poll = False
         ElseIf m_objExApplication.IsWorkbookAlive(objBalance.objBalanceBook) = False Then
@@ -767,6 +786,74 @@ Class CMain
             Poll = False
         Else
         End If
+    End Function
+End Class
+
+' ポーリングのためのインターフェースをクラスで実装する
+' VBScriptではInterfaceを直接記述できないので、関数名を合わせることで実現する。
+' VBScriptは全てObject型で実行時バインディングなので名前さえ合っていれば
+' シグナルとしてのコールバックが可能である。
+Class IPoll
+    Private m_iClientCount
+    Private m_objClients()
+
+    Private Sub Class_Initialize
+        m_iClientCount = 0
+        ReDim m_objClients(1)
+    End Sub
+    Private Sub Class_Terminate
+        Dim i
+        For i = 0 To m_iClientCount - 1
+            Set m_objClients(i) = Nothing
+        Next
+        m_iClientCount = 0
+    End Sub
+
+    ' 指定のオブジェクトをポーリングのチェインに追加する
+    Public Function Poll_Join(client_obj)
+        Poll_Join = False   ' 戻り値を失敗でプリセットしておく
+        m_iClientCount = m_iClientCount + 1
+        ReDim preserve m_objClients(m_iClientCount)
+        Set m_objClients(m_iClientCount - 1) = client_obj
+        Poll_Join = True   ' 戻り値:成功
+    End Function
+
+    ' 指定のオブジェクトをポーリングのチェインから外す
+    Public Function Poll_Release(client_obj)
+        Poll_Release = False   ' 戻り値を失敗でプリセットしておく
+        Dim iSrc
+        Dim iDst
+        iDst = 0
+        For iSrc = 0 To m_iClientCount - 1
+            If m_objClients(iSrc) Is client_obj Then
+                Poll_Release = True   ' 戻り値を成功にしておく
+            Else
+                If iDst = iSrc Then
+                Else
+                    Set m_objClients(iDst) = m_objClients(iSrc)
+                End If
+                iDst = iDst + 1
+            End If
+        Next
+        ' 空き領域の参照をクリア
+        Dim i
+        For i = iDst To m_iClientCount - 1
+            Set m_objClients(i) = Nothing
+        Next
+        m_iClientCount = iDst
+        ' ReDim preserve m_objClients(m_iClientCount) 積極的に縮小しなくて良い
+    End Function
+
+    ' ポーリングの実行
+    Public Function Poll
+        Poll = True    ' 戻り値を成功でプリセットしておく
+        Dim i
+        For i = 0 To m_iClientCount - 1
+            If m_objClients(i) Is Nothing Then
+            Else
+                m_objClients(i).Poll_Signal
+            End If
+        Next
     End Function
 End Class
 
@@ -1294,7 +1381,18 @@ Class CChart
     End Property
 
     Public Property Set objMain(obj)
+        ' ポーリングチェインから外れる
+        If m_objMain Is Nothing Then
+        Else
+            m_objMain.Poll_Release Me
+        End If
+        ' メインの設定／更新
         Set m_objMain = obj
+        ' ポーリングチェインに参加する
+        If m_objMain Is Nothing Then
+        Else
+            m_objMain.Poll_Join Me
+        End If
     End Property
 
     Public Property Get strFilename
@@ -1986,6 +2084,12 @@ Class CChart
 
         readSheetProfile = True ' 戻り値:成功
     End Function
+
+    ' IPoll::Poll_Signal
+    ' ポーリングのシグナルハンドラ
+    Public Function Poll_Signal
+        Poll_Signal = True
+    End Function
 End Class
 
 ' バランスクラス
@@ -2016,7 +2120,18 @@ Class CBalance
     End Property
 
     Public Property Set objMain(obj)
+        ' ポーリングチェインから外れる
+        If m_objMain Is Nothing Then
+        Else
+            m_objMain.Poll_Release Me
+        End If
+        ' メインの設定／更新
         Set m_objMain = obj
+        ' ポーリングチェインに参加する
+        If m_objMain Is Nothing Then
+        Else
+            m_objMain.Poll_Join Me
+        End If
     End Property
 
     Public Property Get strFilename
@@ -2203,6 +2318,12 @@ Class CBalance
             csvFileForming = True
         End If
     End Function
+
+    ' IPoll::Poll_Signal
+    ' ポーリングのシグナルハンドラ
+    Public Function Poll_Signal
+        Poll_Signal = True
+    End Function
 End Class
 
 ' アイテム表クラス
@@ -2247,7 +2368,18 @@ Class CItem
     End Property
 
     Public Property Set objMain(obj)
+        ' ポーリングチェインから外れる
+        If m_objMain Is Nothing Then
+        Else
+            m_objMain.Poll_Release Me
+        End If
+        ' メインの設定／更新
         Set m_objMain = obj
+        ' ポーリングチェインに参加する
+        If m_objMain Is Nothing Then
+        Else
+            m_objMain.Poll_Join Me
+        End If
     End Property
 
     Public Property Get strFilename
@@ -2461,6 +2593,12 @@ Class CItem
 'items_sheet --> m_objItemSheet.objComWorksheet
 'items_row_end --> m_iItems_row_end
 'cur_cell --> m_objEnumCurCell
+    End Function
+
+    ' IPoll::Poll_Signal
+    ' ポーリングのシグナルハンドラ
+    Public Function Poll_Signal
+        Poll_Signal = True
     End Function
 End Class
 
