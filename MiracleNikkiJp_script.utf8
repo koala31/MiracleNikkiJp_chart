@@ -695,6 +695,7 @@ Class CMain
     'コーデ試算起動ショートカット作成
     Public Function CreateRunShortCut
         CreateRunShortCut = False
+        on error resume next
         Dim strRunShortCutFilename
         strRunShortCutFilename = objFileSystem.GetAbsolutePathName("ミラクルニキのコーデ試算表.lnk")
         Dim objRunShortCut
@@ -705,12 +706,17 @@ Class CMain
         objRunShortCut.Description = "ミラクルニキのコーデ試算表を起動します。"
         objRunShortCut.IconLocation = objFileSystem.GetAbsolutePathName("MiracleNikkiJp_chart.ico")
         objRunShortCut.Save
-        CreateRunShortCut = True
+        If Err.number <> 0 Then
+            CreateRunShortCut = False
+        Else
+            CreateRunShortCut = True
+        End If
     End Function
 
     'コーデ試算リリースのショートカット作成
     Public Function CreateReleaseShortCut
         CreateReleaseShortCut = False
+        on error resume next
         Dim strRunShortCutFilename
         strRunShortCutFilename = objFileSystem.GetAbsolutePathName("Release.lnk")
         Dim objRunShortCut
@@ -721,7 +727,11 @@ Class CMain
         objRunShortCut.Description = "ミラクルニキのコーデ試算表のリリースファイルセットをサブディレクトリに作成します。"
         objRunShortCut.IconLocation = "%SystemRoot%\system32\SHELL32.dll, 1"
         objRunShortCut.Save
-        CreateReleaseShortCut = True
+        If Err.number <> 0 Then
+            CreateReleaseShortCut = False
+        Else
+            CreateReleaseShortCut = True
+        End If
     End Function
 
     ' 試算表のマップを更新する
