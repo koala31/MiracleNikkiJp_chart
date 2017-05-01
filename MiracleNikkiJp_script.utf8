@@ -699,11 +699,11 @@ Class CMain
         strRunShortCutFilename = objFileSystem.GetAbsolutePathName("ミラクルニキのコーデ試算表.lnk")
         Dim objRunShortCut
         Set objRunShortCut = objWScriptShell.CreateShortcut(strRunShortCutFilename)
-        objRunShortCut.TargetPath = WScript.ScriptFullName
-        objRunShortCut.Arguments = "run"
+        objRunShortCut.TargetPath = "wscript.exe"
+        objRunShortCut.Arguments = WScript.ScriptFullName & " run"
         objRunShortCut.WorkingDirectory = objCurrentDirectory.strCurrentDirectory
         objRunShortCut.Description = "ミラクルニキのコーデ試算表を起動します。"
-        objRunShortCut.IconLocation = "%SystemRoot%\system32\SHELL32.dll, 1"
+        objRunShortCut.IconLocation = objFileSystem.GetAbsolutePathName("MiracleNikkiJp_chart.ico")
         objRunShortCut.Save
         CreateRunShortCut = True
     End Function
