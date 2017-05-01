@@ -401,9 +401,11 @@ Class CMain
                 ' 試算表の変更がないと設定する
                 objChart.Saved = True
                 ' 試算表を閉じる
+                objChart.Close
                 Set objChart = Nothing
             End If
             ' アイテム表.xlsxを閉じる
+            objItem.Close
             Set objItem = Nothing
             ' アイテム表オブジェクトの再生成
             Set objItem = New CItem
