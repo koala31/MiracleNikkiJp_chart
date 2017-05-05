@@ -790,11 +790,11 @@ Class CMain
         ' ポーリングのサービスを実行
         m_objPollService.Poll
 
-        If m_objExApplication.IsWorkbookAlive(objChart.objChartBook) = False Then
+        If objChart.WorkbookAlive = False Then
             Poll = False
-        ElseIf m_objExApplication.IsWorkbookAlive(objBalance.objBalanceBook) = False Then
+        ElseIf objBalance.WorkbookAlive = False Then
             Poll = False
-        ElseIf m_objExApplication.IsWorkbookAlive(objItem.objItemBook) = False Then
+        ElseIf objItem.WorkbookAlive = False Then
             Poll = False
         Else
         End If
@@ -1061,6 +1061,8 @@ Class CExApplication
     End Function
 End Class
 
+Const AliveLostThresholdDefault = 4 ' AliveCheckがFalseを返すようになる回数のデフォルト値
+
 ' Excel Automation Workbook wrapper
 Class CExWorkbook
     Private m_objExApplication   ' parent as CExApplication
@@ -1069,6 +1071,8 @@ Class CExWorkbook
     Private m_objComActiveWindow ' active COM Automation Excel Window
     Private m_bOpend
     Private m_strWorkbookName
+    Private m_iAliveLostCount
+    Private m_iAliveLostThreshold
 
     Private Sub Class_Initialize
         Set m_objExApplication = Nothing
@@ -1078,6 +1082,8 @@ Class CExWorkbook
         Set m_objComActiveWindow = Nothing
         m_bOpend = False
         m_strWorkbookName = Empty
+        m_iAliveLostCount = 0
+        m_iAliveLostThreshold = AliveLostThresholdDefault
     End Sub
     Private Sub Class_Terminate
         ' 閉じる
@@ -1114,6 +1120,15 @@ Class CExWorkbook
 
     Public Property Get strWorkbookName
         strWorkbookName = m_strWorkbookName
+    End Property
+
+    Public Property Get AliveLostThreshold
+        AliveLostThreshold = m_iAliveLostThreshold
+    End Property
+
+    Public Property Set AliveLostThreshold(cnt)
+        m_iAliveLostCount = 0   ' 現カウントをリセットする
+        m_iAliveLostThreshold = cnt
     End Property
 
     Public Function GetSheet(sheetname, ByRef obj)
@@ -1214,6 +1229,26 @@ Class CExWorkbook
     Public Sub MarkAsSaved
         m_objComWorkbook.Saved = True
     End Sub
+
+    'ワークブックがアプリケーションオブジェクトのWorkbooksコレクションに現存しているならTrueを返す
+    'プロパティAliveLostThresholdで指定する回数以上、現存しないが継続したならFalseを返す。
+    Public Function AliveCheck
+        AliveCheck = False  ' 戻り値を「現存しない」にプリセットしておく
+        on error resume next
+        ' アプリケーションオブジェクトに現存を問い合わせる
+        If Not m_objExApplication.IsWorkbookAlive(Me) Then
+            m_iAliveLostCount = m_iAliveLostCount + 1
+        Else
+            m_iAliveLostCount = 0
+        End If
+        ' 現存しないが継続したなら、戻り値で現存しないと返す
+        If m_iAliveLostCount >= m_iAliveLostThreshold Then
+            m_iAliveLostCount = m_iAliveLostThreshold   ' リミット処理
+            AliveCheck = False
+        Else
+            AliveCheck = True
+        End If
+    End Function
 
     ' ポーリング
     ' 戻り値 ポーリング継続可=True, ポーリング中止要求=False
@@ -1359,6 +1394,7 @@ Class CChart
     Private m_iMapBlockNumberLast   ' 最近登録したブロック番号(変化検知用)
     Private m_iMapValidCount    ' マップの登録数
     Private m_iSeqNumberColumn  ' 通番の列
+    Private m_bWorkbookAlive    ' ワークブックが現存していればTrue
 
     Private Sub Class_Initialize
         strFileBasename = "MiracleNikkiJp_chart"
@@ -1375,6 +1411,7 @@ Class CChart
         m_iMapBlockNumberLast = -1
         m_iMapValidCount = 0
         m_iSeqNumberColumn = 26
+        m_bWorkbookAlive = False
     End Sub
     Private Sub Class_Terminate
         Close
@@ -1423,6 +1460,10 @@ Class CChart
         If m_bOpend Then
             m_objChartBook.objComWorkbook.Saved = st
         End If
+    End Property
+
+    Public Property Get WorkbookAlive   ' ワークブックが現存していればTrue
+        WorkbookAlive = m_bWorkbookAlive
     End Property
 
     ' xml形式の試算表を開く
@@ -1498,6 +1539,7 @@ Class CChart
             Else
                 m_bOpend = True
                 open = True   ' 戻り値:成功
+                m_bWorkbookAlive = True    ' ワークブックが現存していればTrue
             End If
         Else
             WScript.echo("ファイルを開けませんでした " & filename)
@@ -1537,6 +1579,7 @@ Class CChart
         If (Not (m_objChartBook Is Nothing)) And m_bOpend Then
             m_objChartBook.CloseBook
             m_bOpend = False
+            ' m_bWorkbookAlive = False  ' ワークブックは現存していないが異常ではないのでケアしないことにしてみる
             ' 閉じたファイルが .xml 形式なら
             If objFileSystem.GetExtensionName(m_strFilename) <> "xml" Then
                 ' xml以外
@@ -2100,7 +2143,10 @@ Class CChart
     ' IPoll::Poll_Signal
     ' ポーリングのシグナルハンドラ
     Public Function Poll_Signal
-        Poll_Signal = True
+        Poll_Signal = True  ' 戻り値のプリセット
+
+        ' Wrokbookの現存チェック
+        m_bWorkbookAlive = m_objChartBook.AliveCheck
     End Function
 End Class
 
@@ -2111,6 +2157,7 @@ Class CBalance
     Private m_objBalanceBook   'as CExWorkbook
     Private m_strFilename
     Private m_bOpend
+    Private m_bWorkbookAlive    ' ワークブックが現存していればTrue
 
     Private Sub Class_Initialize
         strFileBasename = "MiracleNikkiJp_balance"
@@ -2118,6 +2165,7 @@ Class CBalance
         Set m_objBalanceBook = Nothing
         m_strFilename = Empty
         m_bOpend = False
+        m_bWorkbookAlive = False
     End Sub
     Private Sub Class_Terminate
         Close
@@ -2162,6 +2210,10 @@ Class CBalance
         If m_bOpend Then
             m_objBalanceBook.objComWorkbook.Saved = st
         End If
+    End Property
+
+    Public Property Get WorkbookAlive   ' ワークブックが現存していればTrue
+        WorkbookAlive = m_bWorkbookAlive
     End Property
 
     ' csv形式のバランスを開く
@@ -2210,6 +2262,7 @@ Class CBalance
 '                WScript.echo("ワークシートにアクセスできませんでした")
 '            End If
             open = True   ' 戻り値:成功
+            m_bWorkbookAlive = True    ' ワークブックが現存していればTrue
         Else
             WScript.echo("ファイルを開けませんでした " & filename)
             Set m_objBalanceBook = Nothing
@@ -2248,6 +2301,7 @@ Class CBalance
         If (Not (m_objBalanceBook Is Nothing)) And m_bOpend Then
             m_objBalanceBook.CloseBook
             m_bOpend = False
+            ' m_bWorkbookAlive = False  ' ワークブックは現存していないが異常ではないのでケアしないことにしてみる
             ' 閉じたファイルが .csv 形式なら
             If objFileSystem.GetExtensionName(m_strFilename) <> "csv" Then
                 ' csv以外
@@ -2334,7 +2388,10 @@ Class CBalance
     ' IPoll::Poll_Signal
     ' ポーリングのシグナルハンドラ
     Public Function Poll_Signal
-        Poll_Signal = True
+        Poll_Signal = True  ' 戻り値のプリセット
+
+        ' Wrokbookの現存チェック
+        m_bWorkbookAlive = m_objBalanceBook.AliveCheck
     End Function
 End Class
 
@@ -2350,6 +2407,7 @@ Class CItem
     Private m_bDeleteOnClose '閉じたらファイルを削除する指定
     Private m_iItems_row_end ' アイテム表の最後の行番号
     Private m_objEnumCurCell ' アイテム列挙で用いる現在セルのRange
+    Private m_bWorkbookAlive    ' ワークブックが現存していればTrue
 
     Private Sub Class_Initialize
         m_strFileBasename = "MiracleNikkiJp_items"
@@ -2362,6 +2420,7 @@ Class CItem
         m_bDeleteOnClose = False
         m_iItems_row_end = 0
         Set m_objEnumCurCell = Nothing
+        m_bWorkbookAlive = False
     End Sub
     Private Sub Class_Terminate
         Close
@@ -2428,6 +2487,10 @@ Class CItem
             ' csvのときのみセットできる
             m_bDeleteOnClose = st
         End If
+    End Property
+
+    Public Property Get WorkbookAlive   ' ワークブックが現存していればTrue
+        WorkbookAlive = m_bWorkbookAlive
     End Property
 
     ' csv形式のアイテム表を探してm_strFilenameに設定する
@@ -2500,6 +2563,7 @@ Class CItem
 
                 m_bOpend = True
                 open = True   ' 戻り値:成功
+                m_bWorkbookAlive = True    ' ワークブックが現存していればTrue
             End If
         Else
             WScript.echo("ファイルを開けませんでした " & filename)
@@ -2539,6 +2603,7 @@ Class CItem
             m_objItemBook.CloseBook
         End If
         m_bOpend = False
+        ' m_bWorkbookAlive = False  ' ワークブックは現存していないが異常ではないのでケアしないことにしてみる
         Close = True   ' 戻り値:成功
         ' 使わなくなるオブジェクトの解放
         m_objEnumCurCell = Nothing
@@ -2610,7 +2675,10 @@ Class CItem
     ' IPoll::Poll_Signal
     ' ポーリングのシグナルハンドラ
     Public Function Poll_Signal
-        Poll_Signal = True
+        Poll_Signal = True  ' 戻り値のプリセット
+
+        ' Wrokbookの現存チェック
+        m_bWorkbookAlive = m_objItemBook.AliveCheck
     End Function
 End Class
 
