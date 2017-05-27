@@ -2095,7 +2095,7 @@ Class CChart
         m_objQuestSheet.objComWorksheet.Range("大人キュート").Value = "評価しない"
         m_objQuestSheet.objComWorksheet.Range("セクシーピュア").Value = "評価しない"
         m_objQuestSheet.objComWorksheet.Range("ウォームクール").Value = "評価しない"
-        m_objQuestSheet.objComWorksheet.Range("反属性減点").Value = "100%"
+        m_objQuestSheet.objComWorksheet.Range("反属性減点").Value = "0%"
         m_objQuestSheet.objComWorksheet.Range("指定").Value = ""
         m_objQuestSheet.objComWorksheet.Range("所有").Value = ""
         m_objQuestSheet.objComWorksheet.Range("集計_採用").Value = "◯"
