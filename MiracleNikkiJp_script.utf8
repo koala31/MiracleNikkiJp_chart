@@ -24,6 +24,15 @@ Const xlShiftDown = -4121
 Const xlShiftToLeft = -4159
 Const xlShiftToRight = -4161
 Const xlShiftUp = -4162
+Const xlComments = -4144    ' 検索対象:コメント
+Const xlFormulas = -4123    ' 検索対象:数式
+Const xlValues   = -4163    ' 検索対象:値
+Const xlWhole = 1   ' 検索:セル内容が完全に同一
+Const xlPart  = 2   ' 検索:セル内容の部分
+Const xlByRows = 1      ' 検索順序:横に検索してから次の行へ
+Const xlByColumns = 2   ' 検索順序:縦に検索してから次の列へ
+Const xlNext = 1        ' 検索方向:次へ
+Const xlPrevious = 2    ' 検索方向:前へ
 
 ' コマンド文字列の一覧
 Const cCmdEnd = "end"
@@ -630,6 +639,8 @@ Class CMain
         Set objChart.objMain = Me
         ' 試算表.xlsxを開く
         objChart.OpenXlsx
+        ' 検索の既定をセットしておく 対象=値, 部分, 列, 順方向, 大文字/小文字区別しない, 全角/半角区別しない
+        objChart.objQuestSheet.objComWorksheet.Cells.Find "",,xlValues, xlPart, xlByColumns, xlNext, False, False
         ' 次に実行するコマンドを戻り値で指定
         CmdRun = cCmdDbgPoll
 
